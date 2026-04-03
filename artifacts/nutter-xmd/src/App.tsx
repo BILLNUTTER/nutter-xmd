@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useAuth } from "@clerk/react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
@@ -9,8 +9,30 @@ import Home from "@/pages/Home";
 import DashboardLayout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import AdminDashboard from "@/pages/Admin";
+import { setAuthTokenGetter } from "@/lib/api-client";
 
-const queryClient = new QueryClient();
+// ── QueryClient ──────────────────────────────────────────────────────────────
+// staleTime: treat data as fresh for 30 s → no redundant refetch on every mount.
+// retry: only retry once; default 3 hammers a slow Heroku dyno three times.
+// gcTime: keep inactive cache for 5 min so back-navigation is instant.
+// retryDelay: start at 2 s so a single cold-start doesn't queue 3 fast retries.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      retry: (failureCount, error: any) => {
+        if (error?.status === 401 || error?.status === 403) return false;
+        return failureCount < 1;
+      },
+      retryDelay: 2_000,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
@@ -71,6 +93,21 @@ function SignUpPage() {
       <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
     </AuthPageWrapper>
   );
+}
+
+// ── BearerTokenSyncer ─────────────────────────────────────────────────────────
+// Wires Clerk's JWT into every outgoing API fetch as an Authorization: Bearer
+// header. This is required when the frontend (Vercel) and backend (Heroku) are
+// on different origins — session cookies cannot cross domains, but JWTs can.
+function BearerTokenSyncer() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
+  return null;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -144,6 +181,7 @@ function ClerkProviderWithRoutes() {
       }}
     >
       <QueryClientProvider client={queryClient}>
+        <BearerTokenSyncer />
         <ClerkQueryClientCacheInvalidator />
         <Switch>
           <Route path="/" component={HomeRedirect} />
