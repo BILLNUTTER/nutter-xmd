@@ -32,6 +32,8 @@ import {
   LogOut,
   Save,
   AlertTriangle,
+  Hash,
+  Settings2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,6 +84,7 @@ export default function Dashboard() {
   const [pairCode, setPairCode] = useState<string | null>(null);
   const [showPairInput, setShowPairInput] = useState(false);
   const [autoReplyMsg, setAutoReplyMsg] = useState("");
+  const [prefixInput, setPrefixInput] = useState("");
 
   const handleToggleFeature = (key: string, value: boolean) => {
     updateBot.mutate(
@@ -144,6 +147,25 @@ export default function Dashboard() {
           toast({ title: "Auto-reply message saved" });
         },
         onError: () => toast({ title: "Failed to save", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleSavePrefix = () => {
+    const val = prefixInput.trim();
+    if (!val || val.length > 5) {
+      toast({ title: "Prefix must be 1–5 characters", variant: "destructive" });
+      return;
+    }
+    updateBot.mutate(
+      { data: { prefix: val } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() });
+          setPrefixInput("");
+          toast({ title: `Prefix updated to "${val}"` });
+        },
+        onError: () => toast({ title: "Failed to save prefix", variant: "destructive" }),
       }
     );
   };
@@ -381,6 +403,57 @@ export default function Dashboard() {
 
         {/* ─── SETTINGS TAB ─── */}
         <TabsContent value="settings" className="mt-4 space-y-6">
+
+          {/* Bot Configuration */}
+          <Card className="bg-card/50 border-border/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-primary" />
+                Bot Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Prefix */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5 text-primary" />
+                  Command Prefix
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  The character(s) before commands (e.g. <code className="bg-secondary/70 px-1 rounded text-primary">{bot?.prefix ?? "!"}</code>ping, <code className="bg-secondary/70 px-1 rounded text-primary">{bot?.prefix ?? "!"}</code>test). Max 5 characters.
+                </p>
+                <div className="flex gap-2 items-center">
+                  <div className="relative w-28">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-mono">
+                      Current:
+                    </span>
+                    <div className="h-9 pl-[4.5rem] pr-3 flex items-center bg-secondary/50 border border-border/50 rounded-md">
+                      <span className="font-mono text-primary font-bold text-base">{bot?.prefix ?? "!"}</span>
+                    </div>
+                  </div>
+                  <Input
+                    data-testid="input-prefix"
+                    placeholder="New prefix"
+                    value={prefixInput}
+                    onChange={(e) => setPrefixInput(e.target.value.slice(0, 5))}
+                    maxLength={5}
+                    className="font-mono bg-secondary/50 border-border/50 focus:border-primary/50 w-32"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleSavePrefix}
+                    disabled={updateBot.isPending || !prefixInput.trim()}
+                    data-testid="button-save-prefix"
+                    className="shrink-0"
+                  >
+                    {updateBot.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Mode selection */}
           <Card className="bg-card/50 border-border/50">
             <CardHeader className="pb-3">
