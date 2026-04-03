@@ -1,0 +1,16 @@
+2026-04-03T19:11:35.148396+00:00 app[web.1]:     at async SessionCipher.decryptWithSessions (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/session_cipher.js:147:29)
+2026-04-03T19:11:35.148396+00:00 app[web.1]:     at async 7117364846789.0 [as awaitable] (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/session_cipher.js:171:28)
+2026-04-03T19:11:35.148397+00:00 app[web.1]:     at async _asyncQueueExecutor (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/queue_job.js:20:29)
+2026-04-03T19:12:29.761626+00:00 app[web.1]: [whatsapp] Session replaced for userId=user_3BqsCWPzcyHQVGOKU7NIXDRkM3N. Another server instance is active. Waiting 3 min before retry.
+2026-04-03T19:13:14.119918+00:00 app[api]: Log session created by user calviomayi@gmail.com
+Disconnected from log stream. There may be events happening that you do not see here! Attempting to reconnect...
+2026-04-03T19:11:35.148332+00:00 app[web.1]: Failed to decrypt message with any known session...
+2026-04-03T19:11:35.148394+00:00 app[web.1]: Session error:Error: Bad MAC Error: Bad MAC
+2026-04-03T19:11:35.148395+00:00 app[web.1]:     at Object.verifyMAC (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/crypto.js:87:15)
+2026-04-03T19:11:35.148395+00:00 app[web.1]:     at SessionCipher.doDecryptWhisperMessage (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/session_cipher.js:250:16)
+2026-04-03T19:11:35.148396+00:00 app[web.1]:     at async SessionCipher.decryptWithSessions (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/session_cipher.js:147:29)
+2026-04-03T19:11:35.148396+00:00 app[web.1]:     at async 7117364846789.0 [as awaitable] (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/session_cipher.js:171:28)
+2026-04-03T19:11:35.148397+00:00 app[web.1]:     at async _asyncQueueExecutor (/app/node_modules/.pnpm/@whiskeysockets+libsignal-node@https+++codeload.github.com+whiskeysockets+libsignal-nod_bfb842df7de72a4fad554e9f3d575a84/node_modules/@whiskeysockets/libsignal-node/src/queue_job.js:20:29)
+2026-04-03T19:12:29.761626+00:00 app[web.1]: [whatsapp] Session replaced for userId=user_3BqsCWPzcyHQVGOKU7NIXDRkM3N. Another server instance is active. Waiting 3 min before retry.
+2026-04-03T19:13:14.119918+00:00 app[api]: Log session created by user calviomayi@gmail.com
+2026-04-03T19:14:03.907284+00:00 app[api]: Log session created by user calviomayi@gmail.com
