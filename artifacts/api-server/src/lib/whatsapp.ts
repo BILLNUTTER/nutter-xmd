@@ -9,6 +9,8 @@ import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
 import path from "path";
 import { mkdirSync, existsSync } from "fs";
+import { eq } from "drizzle-orm";
+import { db, botsTable } from "@workspace/db";
 
 const SESSIONS_DIR = path.join(process.cwd(), "sessions");
 
@@ -41,6 +43,75 @@ function getOrCreateEntry(userId: string): SessionEntry {
     });
   }
   return activeSessions.get(userId)!;
+}
+
+async function getBotPrefix(userId: string): Promise<string> {
+  try {
+    const [bot] = await db.select().from(botsTable).where(eq(botsTable.userId, userId)).limit(1);
+    return bot?.prefix ?? "!";
+  } catch {
+    return "!";
+  }
+}
+
+function jidFromPhone(phoneOrJid: string): string {
+  const clean = phoneOrJid.split(":")[0].replace(/[^0-9]/g, "");
+  return `${clean}@s.whatsapp.net`;
+}
+
+async function sendStartupMessage(sock: WASocket, userId: string, selfJid: string) {
+  try {
+    const prefix = await getBotPrefix(userId);
+
+    const msg =
+      `*NUTTER-XMD* is now *online* 🟢\n\n` +
+      `━━━━━━━━━━━━━━━━━━━\n` +
+      `📌 *Prefix:* \`${prefix}\`\n` +
+      `🔋 *Status:* Active & Ready\n` +
+      `━━━━━━━━━━━━━━━━━━━\n\n` +
+      `> *Quick commands:*\n` +
+      `▸ \`${prefix}ping\` — Check bot speed\n` +
+      `▸ \`${prefix}test\` — Run a system test\n\n` +
+      `_Powered by NUTTER-XMD_ ⚡`;
+
+    await sock.sendMessage(selfJid, { text: msg });
+  } catch {
+  }
+}
+
+async function handleCommand(
+  sock: WASocket,
+  userId: string,
+  jid: string,
+  text: string,
+  prefix: string,
+  sentAt: number
+) {
+  const lower = text.trim().toLowerCase();
+
+  if (lower === `${prefix}ping`) {
+    const latency = Date.now() - sentAt;
+    await sock.sendMessage(jid, {
+      text: `🏓 *Pong!*\n\nBot speed: *${latency}ms*\nStatus: Online ✅`,
+    });
+    return;
+  }
+
+  if (lower === `${prefix}test`) {
+    const prefix_ = await getBotPrefix(userId);
+    await sock.sendMessage(jid, {
+      text:
+        `✅ *NUTTER-XMD System Test*\n\n` +
+        `━━━━━━━━━━━━━━━━━━━\n` +
+        `🔌 *Connection:* Stable\n` +
+        `📡 *Server:* Online\n` +
+        `🔑 *Prefix:* \`${prefix_}\`\n` +
+        `⏱ *Uptime:* Active\n` +
+        `━━━━━━━━━━━━━━━━━━━\n\n` +
+        `_All systems operational_ ⚡`,
+    });
+    return;
+  }
 }
 
 async function startSocket(
@@ -123,6 +194,51 @@ async function startSocket(
       entry.status = "online";
       entry.qrCode = null;
       onStatusChange?.("online");
+
+      // Update bot status in DB
+      try {
+        const selfId = sock.user?.id;
+        await db
+          .update(botsTable)
+          .set({
+            status: "online",
+            phoneNumber: selfId ? jidFromPhone(selfId).replace("@s.whatsapp.net", "") : undefined,
+          })
+          .where(eq(botsTable.userId, userId));
+      } catch {}
+
+      // Send startup message to self
+      if (sock.user?.id) {
+        const selfJid = jidFromPhone(sock.user.id);
+        setTimeout(() => sendStartupMessage(sock, userId, selfJid), 2000);
+      }
+    }
+  });
+
+  // Message handler — process commands
+  sock.ev.on("messages.upsert", async ({ messages, type }) => {
+    if (type !== "notify") return;
+
+    for (const msg of messages) {
+      if (!msg.message) continue;
+      // Skip status broadcasts and empty JIDs
+      if (!msg.key.remoteJid || msg.key.remoteJid === "status@broadcast") continue;
+
+      const body =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text ||
+        "";
+
+      if (!body.trim()) continue;
+
+      const prefix = await getBotPrefix(userId);
+
+      if (!body.startsWith(prefix)) continue;
+
+      const jid = msg.key.remoteJid;
+      const sentAt = (msg.messageTimestamp as number) * 1000 || Date.now();
+
+      await handleCommand(sock, userId, jid, body, prefix, sentAt);
     }
   });
 
@@ -184,8 +300,7 @@ export async function disconnectSession(userId: string): Promise<void> {
   if (entry?.socket) {
     try {
       await entry.socket.logout();
-    } catch {
-    }
+    } catch {}
     entry.socket = null;
     entry.status = "offline";
     entry.qrCode = null;
