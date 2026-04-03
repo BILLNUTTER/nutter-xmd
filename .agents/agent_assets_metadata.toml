@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "laLom57yQk_bNiVJVyJur"
+uri = "file://artifacts/nutter-xmd/src/assets/hero-bg.png"
+type = "image"
+title = "Cyberpunk hacker dashboard UI"

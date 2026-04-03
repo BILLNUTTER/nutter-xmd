@@ -3,13 +3,19 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: NUTTER-XMD SaaS platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: bots
+    description: WhatsApp bot management
+  - name: commands
+    description: Bot command management
+  - name: admin
+    description: Admin operations
 paths:
   /healthz:
     get:
@@ -24,6 +30,340 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /bots:
+    get:
+      operationId: listBots
+      tags: [bots]
+      summary: List all bots for authenticated user
+      responses:
+        "200":
+          description: List of bots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Bot"
+        "401":
+          description: Unauthorized
+    post:
+      operationId: createBot
+      tags: [bots]
+      summary: Create a new bot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBotBody"
+      responses:
+        "201":
+          description: Bot created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+        "400":
+          description: Bad request
+        "401":
+          description: Unauthorized
+
+  /bots/{id}:
+    get:
+      operationId: getBot
+      tags: [bots]
+      summary: Get a bot by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateBot
+      tags: [bots]
+      summary: Update a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBotBody"
+      responses:
+        "200":
+          description: Bot updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteBot
+      tags: [bots]
+      summary: Delete a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /bots/{id}/qr:
+    get:
+      operationId: getBotQR
+      tags: [bots]
+      summary: Get QR code for bot WhatsApp connection
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: QR code data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QRCodeResponse"
+        "404":
+          description: Not found
+
+  /bots/{id}/disconnect:
+    post:
+      operationId: disconnectBot
+      tags: [bots]
+      summary: Disconnect bot from WhatsApp
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+
+  /bots/{id}/commands:
+    get:
+      operationId: listBotCommands
+      tags: [commands]
+      summary: List commands for a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of commands
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BotCommand"
+    post:
+      operationId: createBotCommand
+      tags: [commands]
+      summary: Create a command for a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBotCommandBody"
+      responses:
+        "201":
+          description: Command created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotCommand"
+
+  /bots/{id}/commands/{commandId}:
+    patch:
+      operationId: updateBotCommand
+      tags: [commands]
+      summary: Update a bot command
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBotCommandBody"
+      responses:
+        "200":
+          description: Command updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotCommand"
+    delete:
+      operationId: deleteBotCommand
+      tags: [commands]
+      summary: Delete a bot command
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [bots]
+      summary: Get dashboard statistics for the current user
+      responses:
+        "200":
+          description: Dashboard stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [admin]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginBody"
+      responses:
+        "200":
+          description: Admin login success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        "401":
+          description: Invalid credentials
+
+  /admin/bots:
+    get:
+      operationId: adminListAllBots
+      tags: [admin]
+      summary: Admin - list all bots across all users
+      responses:
+        "200":
+          description: All bots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminBot"
+        "401":
+          description: Unauthorized
+
+  /admin/bots/{id}/activate:
+    post:
+      operationId: adminActivateBot
+      tags: [admin]
+      summary: Admin - activate a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBot"
+
+  /admin/bots/{id}/deactivate:
+    post:
+      operationId: adminDeactivateBot
+      tags: [admin]
+      summary: Admin - deactivate a bot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminBot"
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      tags: [admin]
+      summary: Admin - platform-wide statistics
+      responses:
+        "200":
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +374,229 @@ components:
       required:
         - status
 
+    Bot:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [offline, connecting, online, banned]
+        isActive:
+          type: boolean
+        phoneNumber:
+          type: ["string", "null"]
+        sessionData:
+          type: ["string", "null"]
+        autoReply:
+          type: boolean
+        autoReplyMessage:
+          type: ["string", "null"]
+        prefix:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - userId
+        - name
+        - status
+        - isActive
+        - autoReply
+        - prefix
+        - createdAt
+        - updatedAt
+
+    CreateBotBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        prefix:
+          type: string
+        autoReply:
+          type: boolean
+        autoReplyMessage:
+          type: ["string", "null"]
+      required:
+        - name
+        - prefix
+
+    UpdateBotBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        prefix:
+          type: string
+        autoReply:
+          type: boolean
+        autoReplyMessage:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+
+    QRCodeResponse:
+      type: object
+      properties:
+        qrCode:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, ready, connected, error]
+      required:
+        - status
+
+    BotCommand:
+      type: object
+      properties:
+        id:
+          type: integer
+        botId:
+          type: integer
+        command:
+          type: string
+        description:
+          type: ["string", "null"]
+        response:
+          type: string
+        isEnabled:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - botId
+        - command
+        - response
+        - isEnabled
+        - createdAt
+        - updatedAt
+
+    CreateBotCommandBody:
+      type: object
+      properties:
+        command:
+          type: string
+        description:
+          type: ["string", "null"]
+        response:
+          type: string
+        isEnabled:
+          type: boolean
+      required:
+        - command
+        - response
+
+    UpdateBotCommandBody:
+      type: object
+      properties:
+        command:
+          type: string
+        description:
+          type: ["string", "null"]
+        response:
+          type: string
+        isEnabled:
+          type: boolean
+
+    DashboardStats:
+      type: object
+      properties:
+        totalBots:
+          type: integer
+        activeBots:
+          type: integer
+        onlineBots:
+          type: integer
+        totalCommands:
+          type: integer
+      required:
+        - totalBots
+        - activeBots
+        - onlineBots
+        - totalCommands
+
+    AdminLoginBody:
+      type: object
+      properties:
+        username:
+          type: string
+        key:
+          type: string
+      required:
+        - username
+        - key
+
+    AdminLoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        message:
+          type: string
+      required:
+        - token
+        - message
+
+    AdminBot:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+        isActive:
+          type: boolean
+        phoneNumber:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - userId
+        - name
+        - status
+        - isActive
+        - createdAt
+        - updatedAt
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalBots:
+          type: integer
+        activeBots:
+          type: integer
+        onlineBots:
+          type: integer
+        totalCommands:
+          type: integer
+      required:
+        - totalUsers
+        - totalBots
+        - activeBots
+        - onlineBots
+        - totalCommands
