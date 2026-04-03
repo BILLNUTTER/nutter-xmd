@@ -12,10 +12,9 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
-    // In production, silence per-request logs entirely — they generate a log
-    // line for every poll/QR request and burn memory on string allocation.
-    // Errors (5xx) are still captured by the error handler middleware.
-    silent: process.env.NODE_ENV === "production",
+    // In production, disable automatic per-request logging — it generates a
+    // line for every poll/QR request and wastes memory on string allocation.
+    autoLogging: process.env.NODE_ENV !== "production",
     serializers: {
       req(req) {
         return {
