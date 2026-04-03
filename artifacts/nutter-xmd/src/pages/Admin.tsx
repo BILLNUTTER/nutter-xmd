@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
 const ADMIN_TOKEN_KEY = "admin_token";
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, "") ?? "";
 
 type AdminUser = {
   id: number;
@@ -60,7 +61,7 @@ type AdminStats = {
 
 async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem(ADMIN_TOKEN_KEY);
-  const res = await fetch(path, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -357,12 +358,14 @@ function AdminDashboardContent() {
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["admin", "stats"],
     queryFn: () => adminFetch<AdminStats>("/api/admin/stats"),
+    staleTime: 20_000,
     refetchInterval: 30_000,
   });
 
   const { data: users, isLoading: usersLoading } = useQuery<AdminUser[]>({
     queryKey: ["admin", "users"],
     queryFn: () => adminFetch<AdminUser[]>("/api/admin/users"),
+    staleTime: 20_000,
     refetchInterval: 30_000,
   });
 
@@ -522,7 +525,7 @@ export default function AdminDashboard() {
     if (!form.username || !form.key) return;
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/login", {
+      const res = await fetch(`${API_BASE}/api/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: form.username, key: form.key }),
