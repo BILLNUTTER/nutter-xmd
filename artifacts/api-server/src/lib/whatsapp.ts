@@ -49,11 +49,26 @@ async function getBotSettings(userId: string) {
       typingStatus: bot?.typingStatus ?? false,
       alwaysOnline: bot?.alwaysOnline ?? false,
       antiCall: bot?.antiCall ?? false,
+      antiLink: bot?.antiLink ?? false,
+      antiSticker: bot?.antiSticker ?? false,
+      antiTag: bot?.antiTag ?? false,
+      antiBadWord: bot?.antiBadWord ?? false,
+      badWords: bot?.badWords ?? "",
       autoReply: bot?.autoReply ?? false,
       autoReplyMessage: bot?.autoReplyMessage ?? "",
+      welcomeMessage: bot?.welcomeMessage ?? false,
+      goodbyeMessage: bot?.goodbyeMessage ?? false,
+      autoViewStatus: bot?.autoViewStatus ?? false,
+      autoLikeStatus: bot?.autoLikeStatus ?? false,
     };
   } catch {
-    return { prefix: "!", mode: "public", autoRead: false, typingStatus: false, alwaysOnline: false, antiCall: false, autoReply: false, autoReplyMessage: "" };
+    return {
+      prefix: "!", mode: "public", autoRead: false, typingStatus: false,
+      alwaysOnline: false, antiCall: false, antiLink: false,
+      antiSticker: false, antiTag: false, antiBadWord: false, badWords: "",
+      autoReply: false, autoReplyMessage: "", welcomeMessage: false,
+      goodbyeMessage: false, autoViewStatus: false, autoLikeStatus: false,
+    };
   }
 }
 
@@ -61,6 +76,32 @@ function jidFromPhone(phoneOrJid: string): string {
   const clean = phoneOrJid.split(":")[0].replace(/[^0-9]/g, "");
   return `${clean}@s.whatsapp.net`;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const LINK_REGEX = /(?:https?:\/\/|www\.)[^\s]+|chat\.whatsapp\.com\/[^\s]+/i;
+
+function containsLink(text: string): boolean {
+  return LINK_REGEX.test(text);
+}
+
+function containsBadWord(text: string, words: string[]): boolean {
+  const lower = text.toLowerCase();
+  return words.some((w) => w && lower.includes(w.toLowerCase()));
+}
+
+async function isBotAdmin(sock: WASocket, groupJid: string, botJid: string): Promise<boolean> {
+  try {
+    const { participants } = await sock.groupMetadata(groupJid);
+    const botNum = botJid.split(":")[0].replace(/[^0-9]/g, "");
+    const me = participants.find((p) => p.id.split(":")[0].replace(/[^0-9]/g, "") === botNum);
+    return me?.admin === "admin" || me?.admin === "superadmin";
+  } catch {
+    return false;
+  }
+}
+
+// ── Startup message ───────────────────────────────────────────────────────────
 
 async function sendStartupMessage(sock: WASocket, userId: string, selfJid: string) {
   try {
@@ -79,7 +120,7 @@ async function sendStartupMessage(sock: WASocket, userId: string, selfJid: strin
   } catch {}
 }
 
-// ─── Database-backed auth state ──────────────────────────────────────────────
+// ─── Database-backed auth state ───────────────────────────────────────────────
 
 async function useDatabaseAuthState(userId: string) {
   const rows = await db
@@ -197,6 +238,7 @@ async function startSocket(
 
   sock.ev.on("creds.update", saveCreds);
 
+  // ── Connection state ──────────────────────────────────────────────────────
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
@@ -224,11 +266,9 @@ async function startSocket(
       onStatusChange?.("offline");
 
       if (loggedOut) {
-        // Wipe stored credentials so user must re-pair
         await clearDatabaseAuthState(userId);
         activeSessions.delete(userId);
       } else {
-        // Reconnect — credentials stay in DB
         const newEntry = getOrCreateEntry(userId);
         setTimeout(() => startSocket(userId, newEntry, onStatusChange), 3000);
       }
@@ -257,35 +297,113 @@ async function startSocket(
     }
   });
 
+  // ── Incoming calls ────────────────────────────────────────────────────────
   sock.ev.on("call", async (calls) => {
     for (const call of calls) {
       const { antiCall } = await getBotSettings(userId);
       if (antiCall && call.status === "offer") {
         try {
           await sock.rejectCall(call.id, call.from);
-          await sock.sendMessage(call.from, { text: "❌ *Auto-rejected:* Calls are disabled for this bot." });
+          await sock.sendMessage(call.from, {
+            text: "🚫 Calls are not allowed in this chat.",
+          });
         } catch {}
       }
     }
   });
 
+  // ── Group participant events (welcome / goodbye) ───────────────────────────
+  sock.ev.on("group-participants.update", async ({ id, participants, action }) => {
+    const settings = await getBotSettings(userId);
+    const botJid = sock.user?.id ?? "";
+    const botNum = botJid.split(":")[0].replace(/[^0-9]/g, "");
+
+    for (const participant of participants) {
+      // Never send welcome/goodbye for the bot itself
+      if (participant.replace(/[^0-9]/g, "") === botNum) continue;
+
+      if (action === "add" && settings.welcomeMessage) {
+        let ppUrl: string | null = null;
+        try {
+          ppUrl = await sock.profilePictureUrl(participant, "image");
+        } catch {}
+
+        const caption =
+          `🎉 *Welcome to the group!*\n\n` +
+          `Hey @${participant.split("@")[0]}! 👋\n\n` +
+          `We're so glad you're here. Please read the group rules,\n` +
+          `be respectful, and enjoy your stay! 🌟\n\n` +
+          `━━━━━━━━━━━━━━━━━━━\n` +
+          `_Powered by NUTTER-XMD_ ⚡`;
+
+        try {
+          if (ppUrl) {
+            await sock.sendMessage(id, {
+              image: { url: ppUrl },
+              caption,
+              mentions: [participant],
+            });
+          } else {
+            await sock.sendMessage(id, {
+              text: caption,
+              mentions: [participant],
+            });
+          }
+        } catch {}
+      }
+
+      if ((action === "remove" || action === "leave") && settings.goodbyeMessage) {
+        try {
+          await sock.sendMessage(id, {
+            text:
+              `👋 *Goodbye!*\n\n` +
+              `@${participant.split("@")[0]} has left the group.\n\n` +
+              `Thanks for being part of us!\n` +
+              `_— NUTTER-XMD_ ✨`,
+            mentions: [participant],
+          });
+        } catch {}
+      }
+    }
+  });
+
+  // ── Messages ──────────────────────────────────────────────────────────────
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
 
     for (const msg of messages) {
       if (!msg.message) continue;
-      if (!msg.key.remoteJid || msg.key.remoteJid === "status@broadcast") continue;
+      if (!msg.key.remoteJid) continue;
 
       const jid = msg.key.remoteJid;
       const sentAt = (msg.messageTimestamp as number) * 1000 || Date.now();
 
+      // ── Status broadcast (auto-view / auto-like) ──────────────────────────
+      if (jid === "status@broadcast") {
+        if (sentAt >= BOT_STARTED_AT - 15_000) {
+          const settings = await getBotSettings(userId);
+          if (settings.autoViewStatus) {
+            try { await sock.readMessages([msg.key]); } catch {}
+          }
+          if (settings.autoLikeStatus && msg.key.participant) {
+            try {
+              // React with ❤️ to the status — sent to the status poster's JID
+              await sock.sendMessage(msg.key.participant, {
+                react: {
+                  text: "❤️",
+                  key: { ...msg.key, remoteJid: "status@broadcast" },
+                },
+              });
+            } catch {}
+          }
+        }
+        continue;
+      }
+
       // ── Stale-message guard ───────────────────────────────────────────────
-      // When Baileys reconnects after a crash it replays queued messages as
-      // "notify". Ignore anything that arrived BEFORE this server process
-      // started (with a 15-second buffer for clock drift / startup latency).
       if (sentAt < BOT_STARTED_AT - 15_000) continue;
 
-      // ── Skip protocol / reaction / poll-update noise ──────────────────────
+      // ── Skip protocol noise ───────────────────────────────────────────────
       const m = msg.message;
       if (
         m.protocolMessage ||
@@ -295,6 +413,11 @@ async function startSocket(
       ) continue;
 
       const settings = await getBotSettings(userId);
+      const isGroup = jid.endsWith("@g.us");
+      const botJid = sock.user?.id ?? "";
+      const senderJid = msg.key.fromMe
+        ? botJid
+        : (msg.key.participant ?? msg.key.remoteJid ?? "");
 
       // Auto-read
       if (settings.autoRead) {
@@ -306,7 +429,16 @@ async function startSocket(
         try { await sock.sendPresenceUpdate("available", jid); } catch {}
       }
 
-      // ── Body extraction — handle all WhatsApp message wrappers ───────────
+      // ── Antisticker (must run before body extraction since stickers have no text) ──
+      if (isGroup && !msg.key.fromMe && settings.antiSticker && m.stickerMessage) {
+        const botIsAdmin = await isBotAdmin(sock, jid, botJid);
+        if (botIsAdmin) {
+          try { await sock.sendMessage(jid, { delete: msg.key }); } catch {}
+          continue;
+        }
+      }
+
+      // ── Body extraction — handles all WhatsApp message wrappers ──────────
       const body =
         m.conversation ||
         m.extendedTextMessage?.text ||
@@ -326,14 +458,75 @@ async function startSocket(
         m.templateButtonReplyMessage?.selectedDisplayText ||
         "";
 
+      // ── Group moderation (antilink / antitag / antibadword) ───────────────
+      if (isGroup && !msg.key.fromMe && body) {
+        // Antilink — only acts when bot is admin
+        if (settings.antiLink && containsLink(body)) {
+          const botIsAdmin = await isBotAdmin(sock, jid, botJid);
+          if (botIsAdmin) {
+            try {
+              await sock.sendMessage(jid, { delete: msg.key });
+              await sock.sendMessage(jid, {
+                text: "🔗 *Links are not allowed in this group.*",
+              });
+            } catch {}
+            continue;
+          }
+        }
+
+        // Antitag — delete mass-mention messages (>= 5 mentions), bot must be admin
+        if (settings.antiTag) {
+          const mentionedJids =
+            m.extendedTextMessage?.contextInfo?.mentionedJid ?? [];
+          if (mentionedJids.length >= 5) {
+            const botIsAdmin = await isBotAdmin(sock, jid, botJid);
+            if (botIsAdmin) {
+              try {
+                await sock.sendMessage(jid, { delete: msg.key });
+                await sock.sendMessage(jid, {
+                  text: "🚫 *Mass tagging is not allowed in this group.*",
+                });
+              } catch {}
+              continue;
+            }
+          }
+        }
+
+        // Antibadword — delete + kick, bot must be admin
+        if (settings.antiBadWord && settings.badWords) {
+          const wordsList = settings.badWords
+            .split(",")
+            .map((w) => w.trim())
+            .filter(Boolean);
+          if (wordsList.length > 0 && containsBadWord(body, wordsList)) {
+            const botIsAdmin = await isBotAdmin(sock, jid, botJid);
+            if (botIsAdmin) {
+              try {
+                await sock.sendMessage(jid, { delete: msg.key });
+                await sock.sendMessage(jid, {
+                  text: `⚠️ @${senderJid.split("@")[0]} was removed for using inappropriate language.`,
+                  mentions: [senderJid],
+                });
+                await sock.groupParticipantsUpdate(jid, [senderJid], "remove");
+              } catch {}
+              continue;
+            }
+          }
+        }
+      }
+
       if (!body.trim()) continue;
 
       console.log(`[msg] jid=${jid} fromMe=${msg.key.fromMe} body="${body.slice(0, 80)}"`);
 
-      // ── Typing indicator when processing a command ────────────────────────
+      // ── Typing / recording indicator when processing a command ────────────
       if (settings.typingStatus && body.startsWith(settings.prefix)) {
-        try { await sock.sendPresenceUpdate("composing", jid); } catch {}
-        setTimeout(async () => { try { await sock.sendPresenceUpdate("paused", jid); } catch {} }, 2000);
+        try {
+          await sock.sendPresenceUpdate("composing", jid);
+        } catch {}
+        setTimeout(async () => {
+          try { await sock.sendPresenceUpdate("paused", jid); } catch {}
+        }, 3000);
       }
 
       // ── Command dispatch ──────────────────────────────────────────────────
@@ -342,9 +535,10 @@ async function startSocket(
         continue;
       }
 
-      // ── Auto-reply chatbot (DMs only, when enabled, not from bot itself) ──
-      if (settings.autoReply && !msg.key.fromMe && !jid.endsWith("@g.us")) {
-        const replyMsg = settings.autoReplyMessage || "I'm currently unavailable. Please try later.";
+      // ── Auto-reply chatbot (DMs only, not from bot itself) ────────────────
+      if (settings.autoReply && !msg.key.fromMe && !isGroup) {
+        const replyMsg =
+          settings.autoReplyMessage || "I'm currently unavailable. Please try later.";
         try { await sock.sendMessage(jid, { text: replyMsg }); } catch {}
       }
     }
@@ -353,7 +547,7 @@ async function startSocket(
   return sock;
 }
 
-// ─── Auto-reconnect on server startup ────────────────────────────────────────
+// ─── Auto-reconnect on server startup ─────────────────────────────────────────
 
 export async function reconnectAllSavedSessions() {
   try {
@@ -363,17 +557,15 @@ export async function reconnectAllSavedSessions() {
     console.log(`[whatsapp] Auto-reconnecting ${saved.length} saved session(s)...`);
 
     for (const row of saved) {
-      // Only reconnect if creds exist (means user has paired before)
       if (!row.creds) continue;
 
       const entry = getOrCreateEntry(row.userId);
-      if (entry.socket) continue; // already running
+      if (entry.socket) continue;
 
       startSocket(row.userId, entry).catch((err) => {
         console.error(`[whatsapp] Failed to reconnect session for ${row.userId}:`, err);
       });
 
-      // Stagger reconnects to avoid flooding WhatsApp
       await new Promise((r) => setTimeout(r, 1500));
     }
   } catch (err) {
@@ -381,7 +573,7 @@ export async function reconnectAllSavedSessions() {
   }
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Public API ────────────────────────────────────────────────────────────────
 
 export async function requestQRCode(
   userId: string
@@ -445,10 +637,8 @@ export async function disconnectSession(userId: string): Promise<void> {
   }
   activeSessions.delete(userId);
 
-  // Wipe credentials from DB so bot won't auto-reconnect
   await clearDatabaseAuthState(userId);
 
-  // Also clear the bot status
   try {
     await db
       .update(botsTable)

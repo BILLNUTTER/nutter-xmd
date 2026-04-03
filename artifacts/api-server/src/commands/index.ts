@@ -7,7 +7,13 @@ import { pingCommand, botstatusCommand, runtimeCommand, timeCommand, diskCommand
 import { kickCommand, promoteCommand, demoteCommand, addCommand, inviteCommand, openCommand, closeCommand, pollCommand, tagallCommand, hidetagCommand, kickallCommand, setgroupnameCommand, setdescCommand } from "./group";
 import { blockCommand, unblockCommand, deleteCommand, warnCommand, joinCommand, leaveCommand, onlineCommand, setbioCommand, setPrefixOwnerCommand, restartCommand } from "./owner";
 import { weatherCommand, defineCommand, imdbCommand, lyricsCommand, ytsCommand, shazamCommand } from "./search";
-import { getsettingsCommand, anticallCommand, chatbotCommand, autotypeCommand, autoreadCommand, antideleteCommand, alwaysonlineCommand, modeCommand, setPrefixCommand, setwelcomeCommand } from "./settings";
+import {
+  getsettingsCommand, anticallCommand, antistickerCommand, antilinkCommand, antitagCommand,
+  antibadwordCommand, addbadwordCommand, removebadwordCommand, listbadwordsCommand,
+  chatbotCommand, autotypeCommand, autoreadCommand, antideleteCommand, alwaysonlineCommand,
+  autoviewstatusCommand, autolikestatusCommand, modeCommand, setPrefixCommand,
+  setwelcomeCommand, setgoodbyeCommand,
+} from "./settings";
 import { youtubeCommand, songCommand, tiktokCommand, instagramCommand, facebookCommand, twitterCommand, mediafireCommand, gdriveCommand, imageCommand } from "./download";
 import { bassCommand, earrapeCommand, reverseCommand, robotCommand, deepCommand, tomp3Command, topttCommand } from "./audio";
 
@@ -103,13 +109,25 @@ const COMMANDS: Record<string, (ctx: CommandContext) => Promise<unknown>> = {
   getsettings: getsettingsCommand,
   settings: getsettingsCommand,
   anticall: anticallCommand,
+  antisticker: antistickerCommand,
+  antilink: antilinkCommand,
+  antitag: antitagCommand,
+  antibadword: antibadwordCommand,
+  addbadword: addbadwordCommand,
+  removebadword: removebadwordCommand,
+  listbadwords: listbadwordsCommand,
+  badwords: listbadwordsCommand,
   chatbot: chatbotCommand,
   autotype: autotypeCommand,
   autoread: autoreadCommand,
   antidelete: antideleteCommand,
   alwaysonline: alwaysonlineCommand,
+  autoviewstatus: autoviewstatusCommand,
+  autolikestatus: autolikestatusCommand,
   mode: modeCommand,
   setwelcome: setwelcomeCommand,
+  setgoodbye: setgoodbyeCommand,
+  goodbye: setgoodbyeCommand,
   // Search
   weather: weatherCommand,
   define: defineCommand,

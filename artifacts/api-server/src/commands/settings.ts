@@ -11,26 +11,36 @@ async function updateBot(userId: string, data: Partial<typeof botsTable.$inferIn
   await db.update(botsTable).set(data).where(eq(botsTable.userId, userId));
 }
 
+function onOff(v: boolean | null | undefined) {
+  return v ? "ON ✅" : "OFF ❌";
+}
+
 export async function getsettingsCommand(ctx: CommandContext) {
   try {
     const bot = await getBot(ctx.userId);
     if (!bot) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Bot not found." });
-    const on = "✅", off = "❌";
     await ctx.sock.sendMessage(ctx.jid, {
       text:
         `╔══[ ⚙️ *BOT SETTINGS* ]══╗\n\n` +
         `🔑 *Prefix:* ${bot.prefix}\n` +
         `🌐 *Mode:* ${bot.mode}\n\n` +
-        `${bot.antiCall ? on : off} Anti Call\n` +
-        `${bot.antiLink ? on : off} Anti Link\n` +
-        `${bot.antiSpam ? on : off} Anti Spam\n` +
-        `${bot.welcomeMessage ? on : off} Welcome Message\n` +
-        `${bot.goodbyeMessage ? on : off} Goodbye Message\n` +
-        `${bot.autoReply ? on : off} Auto Reply\n` +
-        `${bot.autoRead ? on : off} Auto Read\n` +
-        `${bot.typingStatus ? on : off} Typing Status\n` +
-        `${bot.alwaysOnline ? on : off} Always Online\n` +
-        `${bot.autoStatus ? on : off} Auto Status\n\n` +
+        `*── Moderation ──*\n` +
+        `${onOff(bot.antiCall)} Anti Call\n` +
+        `${onOff(bot.antiLink)} Anti Link\n` +
+        `${onOff(bot.antiSticker)} Anti Sticker\n` +
+        `${onOff(bot.antiTag)} Anti Tag\n` +
+        `${onOff(bot.antiBadWord)} Anti Bad Word\n` +
+        `${onOff(bot.antiSpam)} Anti Spam\n\n` +
+        `*── Automation ──*\n` +
+        `${onOff(bot.autoReply)} Auto Reply\n` +
+        `${onOff(bot.autoRead)} Auto Read\n` +
+        `${onOff(bot.typingStatus)} Typing Status\n` +
+        `${onOff(bot.alwaysOnline)} Always Online\n` +
+        `${onOff(bot.autoViewStatus)} Auto View Status\n` +
+        `${onOff(bot.autoLikeStatus)} Auto Like Status\n\n` +
+        `*── Group ──*\n` +
+        `${onOff(bot.welcomeMessage)} Welcome Message\n` +
+        `${onOff(bot.goodbyeMessage)} Goodbye Message\n\n` +
         `╚══════════════════╝`,
     });
   } catch {
@@ -38,77 +48,239 @@ export async function getsettingsCommand(ctx: CommandContext) {
   }
 }
 
+// ── Anticall ──────────────────────────────────────────────────────────────────
 export async function anticallCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const bot = await getBot(ctx.userId);
   const newVal = !bot?.antiCall;
   await updateBot(ctx.userId, { antiCall: newVal });
-  await ctx.sock.sendMessage(ctx.jid, { text: `📵 Anti Call is now *${newVal ? "ON ✅" : "OFF ❌"}*` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `📵 Anti Call is now *${onOff(newVal)}*\n\n_${newVal ? "Incoming calls will be rejected with a message." : "Calls are now allowed."}_`,
+  });
 }
 
+// ── Antisticker ───────────────────────────────────────────────────────────────
+export async function antistickerCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.antiSticker;
+  await updateBot(ctx.userId, { antiSticker: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🚫 Anti Sticker is now *${onOff(newVal)}*\n\n_${newVal ? "Stickers will be auto-deleted in groups (bot must be admin)." : "Stickers are now allowed."}_`,
+  });
+}
+
+// ── Antilink ──────────────────────────────────────────────────────────────────
+export async function antilinkCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.antiLink;
+  await updateBot(ctx.userId, { antiLink: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🔗 Anti Link is now *${onOff(newVal)}*\n\n_${newVal ? "Links will be deleted in groups where bot is admin." : "Links are now allowed."}_`,
+  });
+}
+
+// ── Antitag ───────────────────────────────────────────────────────────────────
+export async function antitagCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.antiTag;
+  await updateBot(ctx.userId, { antiTag: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🏷️ Anti Tag is now *${onOff(newVal)}*\n\n_${newVal ? "Mass-mention messages (5+ tags) will be deleted (bot must be admin)." : "Tagging is now allowed."}_`,
+  });
+}
+
+// ── Antibadword ───────────────────────────────────────────────────────────────
+export async function antibadwordCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.antiBadWord;
+  await updateBot(ctx.userId, { antiBadWord: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🤬 Anti Bad Word is now *${onOff(newVal)}*\n\n_${newVal ? "Messages with bad words will be deleted and user kicked (bot must be admin).\nUse !addbadword <word> to add words." : "Bad word filter disabled."}_`,
+  });
+}
+
+export async function addbadwordCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const word = ctx.argText.trim().toLowerCase();
+  if (!word) return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}addbadword <word>` });
+  const bot = await getBot(ctx.userId);
+  const existing = (bot?.badWords ?? "").split(",").map((w) => w.trim()).filter(Boolean);
+  if (existing.includes(word)) {
+    return ctx.sock.sendMessage(ctx.jid, { text: `⚠️ *"${word}"* is already in the bad words list.` });
+  }
+  existing.push(word);
+  await updateBot(ctx.userId, { badWords: existing.join(",") });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `✅ Added *"${word}"* to the bad words list.\n\n📋 Total: ${existing.length} word(s)`,
+  });
+}
+
+export async function removebadwordCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const word = ctx.argText.trim().toLowerCase();
+  if (!word) return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}removebadword <word>` });
+  const bot = await getBot(ctx.userId);
+  const existing = (bot?.badWords ?? "").split(",").map((w) => w.trim()).filter(Boolean);
+  const updated = existing.filter((w) => w !== word);
+  if (updated.length === existing.length) {
+    return ctx.sock.sendMessage(ctx.jid, { text: `⚠️ *"${word}"* not found in the bad words list.` });
+  }
+  await updateBot(ctx.userId, { badWords: updated.join(",") });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `✅ Removed *"${word}"* from the bad words list.\n\n📋 Remaining: ${updated.length} word(s)`,
+  });
+}
+
+export async function listbadwordsCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const words = (bot?.badWords ?? "").split(",").map((w) => w.trim()).filter(Boolean);
+  if (words.length === 0) {
+    return ctx.sock.sendMessage(ctx.jid, {
+      text: `📋 *Bad Words List*\n\nNo bad words set. Use ${ctx.prefix}addbadword <word> to add one.`,
+    });
+  }
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `📋 *Bad Words List* (${words.length})\n\n${words.map((w, i) => `${i + 1}. ${w}`).join("\n")}`,
+  });
+}
+
+// ── Chatbot / auto-reply ──────────────────────────────────────────────────────
 export async function chatbotCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const bot = await getBot(ctx.userId);
   const newVal = !bot?.autoReply;
   await updateBot(ctx.userId, { autoReply: newVal });
-  await ctx.sock.sendMessage(ctx.jid, { text: `🤖 Chatbot is now *${newVal ? "ON ✅" : "OFF ❌"}*` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🤖 Chatbot is now *${onOff(newVal)}*`,
+  });
 }
 
+// ── Autotype ──────────────────────────────────────────────────────────────────
 export async function autotypeCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const bot = await getBot(ctx.userId);
   const newVal = !bot?.typingStatus;
   await updateBot(ctx.userId, { typingStatus: newVal });
-  await ctx.sock.sendMessage(ctx.jid, { text: `⌨️ Auto Typing is now *${newVal ? "ON ✅" : "OFF ❌"}*` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `⌨️ Auto Typing is now *${onOff(newVal)}*`,
+  });
 }
 
+// ── Autoread ──────────────────────────────────────────────────────────────────
 export async function autoreadCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const bot = await getBot(ctx.userId);
   const newVal = !bot?.autoRead;
   await updateBot(ctx.userId, { autoRead: newVal });
-  await ctx.sock.sendMessage(ctx.jid, { text: `👁️ Auto Read is now *${newVal ? "ON ✅" : "OFF ❌"}*` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `👁️ Auto Read is now *${onOff(newVal)}*`,
+  });
 }
 
+// ── Antidelete (placeholder) ──────────────────────────────────────────────────
 export async function antideleteCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
-  await ctx.sock.sendMessage(ctx.jid, { text: "🛡️ Anti Delete feature is available — toggle it from the bot dashboard Settings tab." });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: "🛡️ Anti Delete can be toggled from the bot dashboard Settings tab.",
+  });
 }
 
+// ── Always online ─────────────────────────────────────────────────────────────
 export async function alwaysonlineCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const bot = await getBot(ctx.userId);
   const newVal = !bot?.alwaysOnline;
   await updateBot(ctx.userId, { alwaysOnline: newVal });
   if (newVal) {
-    await ctx.sock.sendPresenceUpdate("available");
+    try { await ctx.sock.sendPresenceUpdate("available"); } catch {}
   }
-  await ctx.sock.sendMessage(ctx.jid, { text: `🟢 Always Online is now *${newVal ? "ON ✅" : "OFF ❌"}*` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🟢 Always Online is now *${onOff(newVal)}*`,
+  });
 }
 
+// ── Auto view status ──────────────────────────────────────────────────────────
+export async function autoviewstatusCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.autoViewStatus;
+  await updateBot(ctx.userId, { autoViewStatus: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `👀 Auto View Status is now *${onOff(newVal)}*\n\n_${newVal ? "Bot will automatically view contacts' status updates." : "Status auto-view disabled."}_`,
+  });
+}
+
+// ── Auto like status ──────────────────────────────────────────────────────────
+export async function autolikestatusCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.autoLikeStatus;
+  await updateBot(ctx.userId, { autoLikeStatus: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `❤️ Auto Like Status is now *${onOff(newVal)}*\n\n_${newVal ? "Bot will react ❤️ to contacts' status updates." : "Status auto-like disabled."}_`,
+  });
+}
+
+// ── Mode ──────────────────────────────────────────────────────────────────────
 export async function modeCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const mode = ctx.args[0]?.toLowerCase();
   if (!mode || !["public", "private"].includes(mode)) {
-    return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}mode <public|private>` });
+    return ctx.sock.sendMessage(ctx.jid, {
+      text: `❓ Usage: ${ctx.prefix}mode <public|private>\n\n_Public: everyone can use commands.\nPrivate: only the bot owner can use commands._`,
+    });
   }
   await updateBot(ctx.userId, { mode });
-  await ctx.sock.sendMessage(ctx.jid, { text: `🌐 Bot mode set to *${mode.toUpperCase()}*\n\n_${mode === "public" ? "Everyone can use bot commands." : "Only the owner can use bot commands."}_` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `🌐 Bot mode set to *${mode.toUpperCase()}*\n\n_${mode === "public" ? "Everyone can use bot commands." : "Only the owner can use bot commands."}_`,
+  });
 }
 
+// ── Set prefix ────────────────────────────────────────────────────────────────
 export async function setPrefixCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   const newPrefix = ctx.args[0];
-  if (!newPrefix || newPrefix.length > 3) return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}setprefix <symbol>` });
+  if (!newPrefix || newPrefix.length > 3) {
+    return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}setprefix <symbol>` });
+  }
   await updateBot(ctx.userId, { prefix: newPrefix });
-  await ctx.sock.sendMessage(ctx.jid, { text: `✅ Prefix changed to: *${newPrefix}*\n\nAll commands now use: ${newPrefix}ping, ${newPrefix}menu, etc.` });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text: `✅ Prefix changed to: *${newPrefix}*\n\nAll commands now use: ${newPrefix}ping, ${newPrefix}menu, etc.`,
+  });
 }
 
+// ── Welcome / goodbye ─────────────────────────────────────────────────────────
 export async function setwelcomeCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
   if (!ctx.isGroup) return ctx.sock.sendMessage(ctx.jid, { text: "❌ This command only works in groups." });
-  const msg = ctx.argText;
-  if (!msg) return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}setwelcome <message>` });
-  await updateBot(ctx.userId, { welcomeMessage: true, autoReplyMessage: msg });
-  await ctx.sock.sendMessage(ctx.jid, { text: `✅ Welcome message set!\n\n_${msg}_` });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.welcomeMessage;
+  await updateBot(ctx.userId, { welcomeMessage: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text:
+      `🎉 Welcome Message is now *${onOff(newVal)}*\n\n` +
+      (newVal
+        ? `_When someone joins the group, the bot will greet them with their profile picture and a welcome caption._`
+        : `_Welcome messages are now disabled._`),
+  });
+}
+
+export async function setgoodbyeCommand(ctx: CommandContext) {
+  if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
+  if (!ctx.isGroup) return ctx.sock.sendMessage(ctx.jid, { text: "❌ This command only works in groups." });
+  const bot = await getBot(ctx.userId);
+  const newVal = !bot?.goodbyeMessage;
+  await updateBot(ctx.userId, { goodbyeMessage: newVal });
+  await ctx.sock.sendMessage(ctx.jid, {
+    text:
+      `👋 Goodbye Message is now *${onOff(newVal)}*\n\n` +
+      (newVal
+        ? `_When someone leaves the group, the bot will send a goodbye message._`
+        : `_Goodbye messages are now disabled._`),
+  });
 }
