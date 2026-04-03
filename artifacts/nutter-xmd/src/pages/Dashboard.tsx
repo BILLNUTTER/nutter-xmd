@@ -101,7 +101,7 @@ export default function Dashboard() {
   const handleAddBadWord = () => {
     const word = newBadWord.trim().toLowerCase();
     if (!word) return;
-    const existing = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
+    const existing = (bot?.badWords ?? "").split(",").map((w: string) => w.trim()).filter((w: string) => w.length > 0);
     if (existing.includes(word)) {
       toast({ title: `"${word}" is already in the list`, variant: "destructive" });
       return;
@@ -121,7 +121,7 @@ export default function Dashboard() {
   };
 
   const handleRemoveBadWord = (word: string) => {
-    const existing = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
+    const existing = (bot?.badWords ?? "").split(",").map((w: string) => w.trim()).filter((w: string) => w.length > 0);
     const updated = existing.filter(w => w !== word);
     updateBot.mutate(
       { data: { badWords: updated.join(",") } as any },
@@ -209,7 +209,7 @@ export default function Dashboard() {
   const isOnline = bot?.status === "online";
   const isConnecting = bot?.status === "connecting";
   const isSuspended = bot && !bot.isActive;
-  const badWordsList = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
+  const badWordsList = (bot?.badWords ?? "").split(",").map((w: string) => w.trim()).filter((w: string) => w.length > 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 max-w-3xl mx-auto">

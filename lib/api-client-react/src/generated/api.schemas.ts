@@ -39,12 +39,18 @@ export interface Bot {
   antiCall: boolean;
   antiLink: boolean;
   antiSpam: boolean;
+  antiSticker: boolean;
+  antiTag: boolean;
+  antiBadWord: boolean;
+  badWords?: string | null;
   welcomeMessage: boolean;
   goodbyeMessage: boolean;
   autoRead: boolean;
   typingStatus: boolean;
   alwaysOnline: boolean;
   autoStatus: boolean;
+  autoViewStatus: boolean;
+  autoLikeStatus: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,12 +77,18 @@ export interface UpdateBotBody {
   antiCall?: boolean;
   antiLink?: boolean;
   antiSpam?: boolean;
+  antiSticker?: boolean;
+  antiTag?: boolean;
+  antiBadWord?: boolean;
+  badWords?: string;
   welcomeMessage?: boolean;
   goodbyeMessage?: boolean;
   autoRead?: boolean;
   typingStatus?: boolean;
   alwaysOnline?: boolean;
   autoStatus?: boolean;
+  autoViewStatus?: boolean;
+  autoLikeStatus?: boolean;
 }
 
 export interface QRData {
@@ -109,4 +121,5 @@ export interface AdminStats {
   totalBots: number;
   activeBots: number;
   onlineBots: number;
+  suspendedBots: number;
 }

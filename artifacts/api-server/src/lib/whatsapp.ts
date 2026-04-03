@@ -354,7 +354,7 @@ async function startSocket(
 
       if (action === "add" && settings.welcomeMessage) {
         let ppUrl: string | null = null;
-        try { ppUrl = await sock.profilePictureUrl(participant, "image"); } catch {}
+        try { ppUrl = await sock.profilePictureUrl(participant, "image") ?? null; } catch {}
         const caption =
           `🎉 *Welcome to the group!*\n\n` +
           `Hey @${participant.split("@")[0]}! 👋\n\n` +
@@ -367,7 +367,7 @@ async function startSocket(
         } catch {}
       }
 
-      if ((action === "remove" || action === "leave") && settings.goodbyeMessage) {
+      if (action === "remove" && settings.goodbyeMessage) {
         try {
           await sock.sendMessage(id, {
             text:
@@ -496,7 +496,7 @@ async function startSocket(
           }
 
           if (settings.antiBadWord && settings.badWords) {
-            const wordsList = settings.badWords.split(",").map((w) => w.trim()).filter(Boolean);
+            const wordsList = settings.badWords.split(",").map((w: string) => w.trim()).filter((w: string) => w.length > 0);
             if (wordsList.length > 0 && containsBadWord(body, wordsList)) {
               const isAdmin = await isBotAdmin(sock, jid, botJid);
               if (isAdmin) {
