@@ -1,0 +1,73 @@
+1 line selected
+Find in logs
+CtrlF
+21:39:38.754 
++ @types/node 25.3.5
+21:39:38.755 
++ @types/qrcode 1.5.6
+21:39:38.755 
++ esbuild 0.27.3
+21:39:38.755 
++ esbuild-plugin-pino 2.3.3
+21:39:38.755 
++ pino-pretty 13.1.3
+21:39:38.755 
++ thread-stream 3.1.0
+21:39:38.756 
+21:39:38.796 
+../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+21:39:38.807 
+../.. preinstall: Done
+21:39:38.925 
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+21:39:38.926 
+│                                                                              │
+21:39:38.926 
+│   Ignored build scripts: @clerk/shared@4.4.0,                                │
+21:39:38.926 
+│   @whiskeysockets/baileys@6.7.21, protobufjs@6.8.8, protobufjs@7.5.4,        │
+21:39:38.927 
+│   protobufjs@8.0.0.                                                          │
+21:39:38.927 
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+21:39:38.927 
+│   to run scripts.                                                            │
+21:39:38.927 
+│                                                                              │
+21:39:38.927 
+╰──────────────────────────────────────────────────────────────────────────────╯
+21:39:38.937 
+Done in 15.1s using pnpm v10.26.1
+21:39:45.384 
+21:39:45.385 
+> @workspace/nutter-xmd@0.0.0 build /vercel/path0/artifacts/nutter-xmd
+21:39:45.385 
+> vite build --config vite.config.ts
+21:39:45.385 
+21:39:45.744 
+vite v7.3.1 building client environment for production...
+21:39:45.838 
+transforming...
+21:39:46.192 
+21:39:46.192 
+/hero-bg.png referenced in /hero-bg.png didn't resolve at build time, it will remain unchanged to be resolved at runtime
+21:39:46.399 
+src/components/ui/tooltip.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+21:39:46.923 
+src/components/ui/label.tsx (2:0): Error when using sourcemap for reporting an error: Can't resolve original location of error.
+21:39:49.220 
+✓ 1860 modules transformed.
+21:39:49.514 
+rendering chunks...
+21:39:49.523 
+computing gzip size...
+21:39:49.539 
+dist/index.html                   0.73 kB │ gzip:   0.41 kB
+21:39:49.539 
+dist/assets/index-BTGqI04e.css  124.98 kB │ gzip:  19.44 kB
+21:39:49.540 
+dist/assets/index-CIU41a7z.js   390.16 kB │ gzip: 119.21 kB
+21:39:49.540 
+✓ built in 3.76s
+21:39:49.615 
+Error: No Output Directory named "dist" found after the Build completed. Configure the Output Directory in your Project Settings. Alternatively, configure vercel.json#outputDirecto
