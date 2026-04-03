@@ -22,12 +22,18 @@ export interface Bot {
   antiCall: boolean;
   antiLink: boolean;
   antiSpam: boolean;
+  antiSticker: boolean;
+  antiTag: boolean;
+  antiBadWord: boolean;
+  badWords?: string | null;
   welcomeMessage: boolean;
   goodbyeMessage: boolean;
   autoRead: boolean;
   typingStatus: boolean;
   alwaysOnline: boolean;
   autoStatus: boolean;
+  autoViewStatus: boolean;
+  autoLikeStatus: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

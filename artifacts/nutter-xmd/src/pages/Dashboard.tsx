@@ -10,36 +10,18 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Wifi,
-  WifiOff,
-  QrCode,
-  Smartphone,
-  RefreshCw,
-  Loader2,
-  Shield,
-  Globe,
-  Lock,
-  Phone,
-  MessageSquare,
-  BellOff,
-  Link2Off,
-  UserCheck,
-  EyeOff,
-  Activity,
-  Radio,
-  Clock,
-  Users,
-  LogOut,
-  Save,
-  AlertTriangle,
-  Hash,
-  Settings2,
+  Wifi, WifiOff, QrCode, Smartphone, RefreshCw, Loader2,
+  Shield, Globe, Lock, Phone, MessageSquare, BellOff, Link2Off,
+  UserCheck, EyeOff, Activity, Radio, Clock, Users, LogOut,
+  Save, AlertTriangle, Hash, Settings2, Sticker, Tag, Swords,
+  ThumbsUp, Heart, Sparkles, X, Plus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -50,19 +32,28 @@ type FeatureToggle = {
   description: string;
   icon: React.ComponentType<any>;
   category: string;
+  note?: string;
 };
 
 const FEATURE_TOGGLES: FeatureToggle[] = [
-  { key: "antiCall",       label: "Anti-Call",        description: "Block and reject incoming voice calls",        icon: BellOff,     category: "Protection" },
-  { key: "antiLink",       label: "Anti-Link",        description: "Auto-delete links posted in groups",           icon: Link2Off,    category: "Protection" },
-  { key: "antiSpam",       label: "Anti-Spam",        description: "Automatically remove spam messages",           icon: Shield,      category: "Protection" },
-  { key: "welcomeMessage", label: "Welcome Message",  description: "Greet new members joining groups",             icon: UserCheck,   category: "Group" },
-  { key: "goodbyeMessage", label: "Goodbye Message",  description: "Send farewell when members leave groups",      icon: LogOut,      category: "Group" },
-  { key: "autoReply",      label: "Auto-Reply",       description: "Automatically respond to all messages",        icon: MessageSquare, category: "Automation" },
-  { key: "autoRead",       label: "Auto-Read",        description: "Mark all incoming messages as read",           icon: EyeOff,      category: "Automation" },
-  { key: "typingStatus",   label: "Typing Indicator", description: "Show typing status while processing",          icon: Clock,       category: "Presence" },
-  { key: "alwaysOnline",   label: "Always Online",    description: "Keep status as online at all times",           icon: Activity,    category: "Presence" },
-  { key: "autoStatus",     label: "Auto-View Status", description: "Automatically view all contacts' statuses",    icon: Radio,       category: "Presence" },
+  // Protection
+  { key: "antiCall",    label: "Anti Call",    description: "Reject incoming voice/video calls and notify the caller", icon: BellOff,   category: "Protection" },
+  { key: "antiLink",    label: "Anti Link",    description: "Delete messages containing links in groups (bot must be admin)", icon: Link2Off,  category: "Protection", note: "Requires bot to be group admin" },
+  { key: "antiSticker", label: "Anti Sticker", description: "Auto-delete sticker messages in groups", icon: Sticker,   category: "Protection", note: "Requires bot to be group admin" },
+  { key: "antiTag",     label: "Anti Tag",     description: "Delete mass-mention messages (5+ people tagged at once)", icon: Tag,       category: "Protection", note: "Requires bot to be group admin" },
+  { key: "antiBadWord", label: "Anti Bad Word", description: "Delete message + kick the sender for using bad words", icon: Swords,    category: "Protection", note: "Requires bot to be group admin" },
+  { key: "antiSpam",    label: "Anti Spam",    description: "Automatically detect and remove spam messages", icon: Shield,    category: "Protection" },
+  // Group
+  { key: "welcomeMessage", label: "Welcome Message", description: "Greet new members with their profile picture and a caption", icon: UserCheck, category: "Group" },
+  { key: "goodbyeMessage", label: "Goodbye Message",  description: "Send a farewell message when members leave", icon: LogOut,    category: "Group" },
+  // Automation
+  { key: "autoReply",      label: "Auto Reply",       description: "Auto-respond to every DM with a custom message", icon: MessageSquare, category: "Automation" },
+  { key: "autoRead",       label: "Auto Read",        description: "Automatically mark all incoming messages as read", icon: EyeOff,     category: "Automation" },
+  // Presence
+  { key: "typingStatus",   label: "Typing Indicator", description: "Show typing animation while the bot processes commands", icon: Clock,    category: "Presence" },
+  { key: "alwaysOnline",   label: "Always Online",    description: "Keep the bot's WhatsApp status as online at all times", icon: Activity, category: "Presence" },
+  { key: "autoViewStatus", label: "Auto View Status", description: "Automatically view all contacts' status updates", icon: Radio,    category: "Presence" },
+  { key: "autoLikeStatus", label: "Auto Like Status", description: "Automatically react ❤️ to every contact's status update", icon: Heart,    category: "Presence" },
 ];
 
 const CATEGORIES = ["Protection", "Group", "Automation", "Presence"];
@@ -85,13 +76,14 @@ export default function Dashboard() {
   const [showPairInput, setShowPairInput] = useState(false);
   const [autoReplyMsg, setAutoReplyMsg] = useState("");
   const [prefixInput, setPrefixInput] = useState("");
+  const [newBadWord, setNewBadWord] = useState("");
 
   const handleToggleFeature = (key: string, value: boolean) => {
     updateBot.mutate(
       { data: { [key]: value } as any },
       {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() }),
-        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+        onError: () => toast({ title: "Failed to update setting", variant: "destructive" }),
       }
     );
   };
@@ -101,14 +93,49 @@ export default function Dashboard() {
       { data: { mode } },
       {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() }),
-        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+        onError: () => toast({ title: "Failed to update mode", variant: "destructive" }),
       }
     );
   };
 
-  const handleGenerateQR = async () => {
-    await refetchQR();
+  const handleAddBadWord = () => {
+    const word = newBadWord.trim().toLowerCase();
+    if (!word) return;
+    const existing = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
+    if (existing.includes(word)) {
+      toast({ title: `"${word}" is already in the list`, variant: "destructive" });
+      return;
+    }
+    existing.push(word);
+    updateBot.mutate(
+      { data: { badWords: existing.join(",") } as any },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() });
+          setNewBadWord("");
+          toast({ title: `Added "${word}" to bad words list` });
+        },
+        onError: () => toast({ title: "Failed to add word", variant: "destructive" }),
+      }
+    );
   };
+
+  const handleRemoveBadWord = (word: string) => {
+    const existing = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
+    const updated = existing.filter(w => w !== word);
+    updateBot.mutate(
+      { data: { badWords: updated.join(",") } as any },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() });
+          toast({ title: `Removed "${word}"` });
+        },
+        onError: () => toast({ title: "Failed to remove word", variant: "destructive" }),
+      }
+    );
+  };
+
+  const handleGenerateQR = async () => { await refetchQR(); };
 
   const handleRequestPairCode = () => {
     if (!pairPhone.trim()) return;
@@ -134,7 +161,7 @@ export default function Dashboard() {
         setPairPhone("");
         toast({ title: "Bot disconnected" });
       },
-      onError: () => toast({ title: "Error", variant: "destructive" }),
+      onError: () => toast({ title: "Error disconnecting", variant: "destructive" }),
     });
   };
 
@@ -182,6 +209,7 @@ export default function Dashboard() {
   const isOnline = bot?.status === "online";
   const isConnecting = bot?.status === "connecting";
   const isSuspended = bot && !bot.isActive;
+  const badWordsList = (bot?.badWords ?? "").split(",").map(w => w.trim()).filter(Boolean);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 max-w-3xl mx-auto">
@@ -189,7 +217,6 @@ export default function Dashboard() {
       <div className="relative rounded-xl border border-border/50 bg-card/80 overflow-hidden p-6">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent pointer-events-none" />
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center gap-4">
-          {/* Status indicator circle */}
           <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 shrink-0 ${
             isOnline ? "border-primary bg-primary/10" :
             isConnecting ? "border-yellow-400 bg-yellow-400/10" :
@@ -252,7 +279,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Tabs: Status | Settings */}
+      {/* Tabs */}
       <Tabs defaultValue="status">
         <TabsList className="w-full grid grid-cols-2 bg-secondary/50">
           <TabsTrigger value="status" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
@@ -268,7 +295,6 @@ export default function Dashboard() {
         {/* ─── STATUS TAB ─── */}
         <TabsContent value="status" className="mt-4 space-y-4">
           {isOnline ? (
-            // Connected state
             <Card className="bg-card/50 border-border/50">
               <CardContent className="pt-6 space-y-4">
                 <div className="flex items-center gap-3 p-4 bg-primary/10 border border-primary/30 rounded-lg">
@@ -291,9 +317,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           ) : (
-            // Disconnected state
             <div className="space-y-4">
-              {/* QR Code section */}
               <Card className="bg-card/50 border-border/50">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -332,14 +356,12 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
 
-              {/* Divider */}
               <div className="flex items-center gap-4 text-muted-foreground text-xs">
                 <div className="flex-1 h-px bg-border/50" />
                 <span>OR use a pairing code</span>
                 <div className="flex-1 h-px bg-border/50" />
               </div>
 
-              {/* Pairing Code section */}
               <Card className="bg-card/50 border-border/50">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -349,7 +371,7 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Enter your WhatsApp number with country code (e.g. 254712345678). Then open WhatsApp → Settings → Linked Devices → Link a Device → <strong className="text-foreground">Link with phone number</strong>, and enter the code shown below.
+                    Enter your WhatsApp number with country code (e.g. 254712345678). Then open WhatsApp → Settings → Linked Devices → Link a Device → <strong className="text-foreground">Link with phone number</strong>, and enter the code shown.
                   </p>
 
                   {!showPairInput ? (
@@ -413,14 +435,13 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Prefix */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium flex items-center gap-1.5">
                   <Hash className="w-3.5 h-3.5 text-primary" />
                   Command Prefix
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  The character(s) before commands (e.g. <code className="bg-secondary/70 px-1 rounded text-primary">{bot?.prefix ?? "!"}</code>ping, <code className="bg-secondary/70 px-1 rounded text-primary">{bot?.prefix ?? "!"}</code>test). Max 5 characters.
+                  The character(s) before commands (e.g. <code className="bg-secondary/70 px-1 rounded text-primary">{bot?.prefix ?? "!"}</code>ping). Max 5 characters.
                 </p>
                 <div className="flex gap-2 items-center">
                   <div className="relative w-28">
@@ -475,7 +496,7 @@ export default function Dashboard() {
                 >
                   <Globe className={`w-5 h-5 mb-2 ${bot?.mode === "public" ? "text-primary" : "text-muted-foreground"}`} />
                   <p className={`font-medium text-sm ${bot?.mode === "public" ? "text-primary" : ""}`}>Public</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Responds in groups & DMs</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Everyone can use commands</p>
                 </button>
                 <button
                   data-testid="button-mode-private"
@@ -488,7 +509,7 @@ export default function Dashboard() {
                 >
                   <Lock className={`w-5 h-5 mb-2 ${bot?.mode === "private" ? "text-blue-400" : "text-muted-foreground"}`} />
                   <p className={`font-medium text-sm ${bot?.mode === "private" ? "text-blue-400" : ""}`}>Private</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Responds in DMs only</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Only owner can use commands</p>
                 </button>
               </div>
             </CardContent>
@@ -500,46 +521,111 @@ export default function Dashboard() {
             return (
               <Card key={category} className="bg-card/50 border-border/50">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider">{category}</CardTitle>
+                  <CardTitle className="text-sm text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                    {category === "Protection" && <Shield className="w-3.5 h-3.5" />}
+                    {category === "Group" && <Users className="w-3.5 h-3.5" />}
+                    {category === "Automation" && <Sparkles className="w-3.5 h-3.5" />}
+                    {category === "Presence" && <Activity className="w-3.5 h-3.5" />}
+                    {category}
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-5">
                   {features.map((feature) => {
                     const Icon = feature.icon;
                     const value = bot ? (bot as any)[feature.key] as boolean : false;
                     return (
-                      <div key={feature.key} className="flex items-start gap-3">
-                        <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${value ? "bg-primary/20" : "bg-secondary/50"}`}>
-                          <Icon className={`w-4 h-4 ${value ? "text-primary" : "text-muted-foreground"}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-medium">{feature.label}</p>
-                              <p className="text-xs text-muted-foreground">{feature.description}</p>
-                            </div>
-                            <Switch
-                              data-testid={`switch-${feature.key}`}
-                              checked={value}
-                              onCheckedChange={(checked) => handleToggleFeature(feature.key, checked)}
-                              disabled={updateBot.isPending}
-                            />
+                      <div key={feature.key} className="space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-8 h-8 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${value ? "bg-primary/20" : "bg-secondary/50"}`}>
+                            <Icon className={`w-4 h-4 ${value ? "text-primary" : "text-muted-foreground"}`} />
                           </div>
-                          {/* Auto-Reply message input */}
-                          {feature.key === "autoReply" && value && (
-                            <div className="mt-3 space-y-2">
-                              <Input
-                                data-testid="input-auto-reply-message"
-                                placeholder="e.g. Hi! I'm a bot, I'll get back to you..."
-                                defaultValue={bot?.autoReplyMessage ?? ""}
-                                onChange={(e) => setAutoReplyMsg(e.target.value)}
-                                className="bg-secondary/50 border-border/50 focus:border-primary/50 text-sm"
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <p className="text-sm font-medium">{feature.label}</p>
+                                <p className="text-xs text-muted-foreground">{feature.description}</p>
+                                {feature.note && (
+                                  <p className="text-xs text-amber-500/80 mt-0.5 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    {feature.note}
+                                  </p>
+                                )}
+                              </div>
+                              <Switch
+                                data-testid={`switch-${feature.key}`}
+                                checked={value}
+                                onCheckedChange={(checked) => handleToggleFeature(feature.key, checked)}
+                                disabled={updateBot.isPending}
                               />
-                              <Button size="sm" variant="outline" onClick={handleSaveAutoReply} disabled={updateBot.isPending}>
-                                <Save className="w-3.5 h-3.5 mr-1.5" />
-                                Save Message
-                              </Button>
                             </div>
-                          )}
+
+                            {/* Auto-Reply message input */}
+                            {feature.key === "autoReply" && value && (
+                              <div className="mt-3 space-y-2">
+                                <Input
+                                  data-testid="input-auto-reply-message"
+                                  placeholder="e.g. Hi! I'm busy, I'll reply soon..."
+                                  defaultValue={bot?.autoReplyMessage ?? ""}
+                                  onChange={(e) => setAutoReplyMsg(e.target.value)}
+                                  className="bg-secondary/50 border-border/50 focus:border-primary/50 text-sm"
+                                />
+                                <Button size="sm" variant="outline" onClick={handleSaveAutoReply} disabled={updateBot.isPending}>
+                                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                                  Save Message
+                                </Button>
+                              </div>
+                            )}
+
+                            {/* Bad words management */}
+                            {feature.key === "antiBadWord" && value && (
+                              <div className="mt-3 space-y-3">
+                                <div className="flex gap-2">
+                                  <Input
+                                    data-testid="input-bad-word"
+                                    placeholder="Add a bad word..."
+                                    value={newBadWord}
+                                    onChange={(e) => setNewBadWord(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleAddBadWord()}
+                                    className="bg-secondary/50 border-border/50 focus:border-primary/50 text-sm"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    onClick={handleAddBadWord}
+                                    disabled={updateBot.isPending || !newBadWord.trim()}
+                                    data-testid="button-add-bad-word"
+                                    className="shrink-0"
+                                  >
+                                    <Plus className="w-3.5 h-3.5 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                                {badWordsList.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {badWordsList.map((word) => (
+                                      <Badge
+                                        key={word}
+                                        variant="secondary"
+                                        className="flex items-center gap-1 text-xs bg-destructive/10 text-destructive border-destructive/20 border"
+                                      >
+                                        {word}
+                                        <button
+                                          onClick={() => handleRemoveBadWord(word)}
+                                          className="ml-0.5 hover:text-destructive/70 transition-colors"
+                                          data-testid={`remove-bad-word-${word}`}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    No bad words added yet. Any user who sends a word from this list will be deleted and kicked.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
