@@ -7,7 +7,7 @@ import {
   useDisconnectBot,
   getGetMyBotQueryKey,
   getGetBotQRQueryKey,
-} from "@workspace/api-client-react";
+} from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Wifi, WifiOff, QrCode, Smartphone, RefreshCw, Loader2,
