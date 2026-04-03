@@ -54,13 +54,9 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname),
   build: {
-    // On Vercel the CWD is the repo root and the platform expects output at
-    // <repo-root>/dist (project setting takes priority over vercel.json).
-    // Locally we keep the output inside the package so the Express static
-    // server can find it at artifacts/nutter-xmd/dist.
-    outDir: isVercel
-      ? path.resolve(import.meta.dirname, "../../dist")
-      : path.resolve(import.meta.dirname, "dist"),
+    // Always build into the package's own dist/ folder.
+    // The Vercel build command copies this to the repo-root dist/ afterwards.
+    outDir: path.resolve(import.meta.dirname, "dist"),
     emptyOutDir: true,
   },
   server: {
