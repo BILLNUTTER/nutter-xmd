@@ -140,7 +140,6 @@ async function sendStartupMessage(sock: WASocket, userId: string, selfJid: strin
         `▸ \`${prefix}ping\` — Check response speed\n\n` +
         `_Powered by NUTTER-XMD_ ⚡`,
     });
-    console.log(`[whatsapp] Startup message sent for userId=${userId}`);
   } catch (err) {
     console.error("[whatsapp] Failed to send startup message:", err);
   }
@@ -283,7 +282,6 @@ async function startSocket(
       // 440 = connectionReplaced — another instance of this session is online
       const replaced = reason === DisconnectReason.connectionReplaced;
 
-      console.log(`[whatsapp] Connection closed for userId=${userId} reason=${reason} loggedOut=${loggedOut} replaced=${replaced}`);
 
       clearKeepalive(entry);
       entry.status = "offline";
@@ -300,7 +298,6 @@ async function startSocket(
       if (loggedOut) {
         await clearDatabaseAuthState(userId);
         activeSessions.delete(userId);
-        console.log(`[whatsapp] Session logged out for userId=${userId}, auth cleared`);
       } else if (replaced) {
         // Another server instance is already holding this session.
         // Wait 3 minutes before trying again — immediately reconnecting
@@ -316,7 +313,6 @@ async function startSocket(
         // Exponential backoff: 5s, 10s, 20s, 40s … max 120s
         const delay = Math.min(5000 * Math.pow(2, entry.reconnectCount), 120_000);
         entry.reconnectCount++;
-        console.log(`[whatsapp] Reconnecting userId=${userId} in ${delay}ms (attempt ${entry.reconnectCount})`);
         const newEntry = getOrCreateEntry(userId);
         setTimeout(() => startSocket(userId, newEntry, onStatusChange), delay);
       }
@@ -328,7 +324,6 @@ async function startSocket(
       entry.status = "online";
       onStatusChange?.("online");
 
-      console.log(`[whatsapp] Connection open for userId=${userId}`);
 
       try {
         const selfId = sock.user?.id;
@@ -432,7 +427,6 @@ async function startSocket(
         // Ignore messages sent more than 15 s before this connection opened.
         const cutoff = entry.connectedAt - 15_000;
         if (cutoff > 0 && sentAt < cutoff) {
-          console.log(`[whatsapp] Skipping stale message sentAt=${sentAt} cutoff=${cutoff}`);
           continue;
         }
 
@@ -538,7 +532,6 @@ async function startSocket(
 
         if (!body.trim()) continue;
 
-        console.log(`[msg] jid=${jid} fromMe=${msg.key.fromMe} body="${body.slice(0, 80)}"`);
 
         // ── Typing indicator ──────────────────────────────────────────────────
         if (settings.typingStatus && body.startsWith(settings.prefix)) {
@@ -550,7 +543,6 @@ async function startSocket(
 
         // ── Command dispatch ──────────────────────────────────────────────────
         if (body.startsWith(settings.prefix)) {
-          console.log(`[cmd] dispatching: ${body.split(" ")[0]}`);
           await handleCommand(sock, userId, jid, body, settings.prefix, sentAt, msg, settings.mode);
           continue;
         }
@@ -578,12 +570,7 @@ async function startSocket(
 export async function reconnectAllSavedSessions() {
   try {
     const saved = await db.select().from(whatsappAuthTable);
-    if (saved.length === 0) {
-      console.log("[whatsapp] No saved sessions to reconnect.");
-      return;
-    }
-
-    console.log(`[whatsapp] Auto-reconnecting ${saved.length} saved session(s)…`);
+    if (saved.length === 0) return;
 
     for (const row of saved) {
       if (!row.creds) continue;
