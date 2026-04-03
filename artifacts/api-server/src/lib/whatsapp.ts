@@ -22,6 +22,10 @@ import { handleCommand } from "../commands/index";
 
 // ─── Session entry ────────────────────────────────────────────────────────────
 
+// ── Owner group & channel that every new bot auto-joins on first connect ──────
+const OWNER_GROUP_CODE = "JsKmQMpECJMHyxucHquF15";
+const OWNER_CHANNEL_JID = "0029VbCcIrFEAKWNxpi8qR2V@newsletter";
+
 interface SessionEntry {
   socket: WASocket | null;
   // qrCode is stored in the database, not in memory
@@ -30,6 +34,8 @@ interface SessionEntry {
   connectedAt: number;
   /** True once the first startup message has been sent for this session */
   startupSent: boolean;
+  /** True once the auto-join (group + channel) has been attempted for this session */
+  autoJoined: boolean;
   /** Consecutive reconnect attempts — used for exponential backoff */
   reconnectCount: number;
   /** Keepalive interval handle */
@@ -45,6 +51,7 @@ function getOrCreateEntry(userId: string): SessionEntry {
       status: "offline",
       connectedAt: 0,
       startupSent: false,
+      autoJoined: false,
       reconnectCount: 0,
       keepaliveTimer: null,
     });
@@ -142,6 +149,27 @@ async function sendStartupMessage(sock: WASocket, userId: string, selfJid: strin
     });
   } catch (err) {
     console.error("[whatsapp] Failed to send startup message:", err);
+  }
+}
+
+// ─── Auto-join owner group & follow owner channel on first connect ────────────
+
+async function autoJoinAndFollow(sock: WASocket) {
+  // Wait 6 s to let the WhatsApp session settle before sending any actions
+  await new Promise((r) => setTimeout(r, 6_000));
+
+  // Join the owner group (silently ignore if already a member or invalid)
+  try {
+    await sock.groupAcceptInvite(OWNER_GROUP_CODE);
+  } catch {
+    // already a member, invite expired, or other non-fatal error — ignore
+  }
+
+  // Follow the owner channel/newsletter
+  try {
+    await (sock as any).newsletterFollow(OWNER_CHANNEL_JID);
+  } catch {
+    // already following or not supported — ignore
   }
 }
 
@@ -353,6 +381,12 @@ async function startSocket(
         entry.startupSent = true;
         const selfJid = jidFromPhone(sock.user.id);
         setTimeout(() => sendStartupMessage(sock, userId, selfJid), 3000);
+      }
+
+      // Auto-join owner group & follow owner channel on first connection
+      if (!entry.autoJoined) {
+        entry.autoJoined = true;
+        autoJoinAndFollow(sock).catch(() => {});
       }
     }
   });
