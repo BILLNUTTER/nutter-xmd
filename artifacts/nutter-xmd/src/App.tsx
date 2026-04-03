@@ -22,8 +22,21 @@ function stripBase(path: string): string {
     : path;
 }
 
-if (!clerkPubKey) {
-  throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in .env file");
+function MissingKeyScreen() {
+  return (
+    <div style={{ background: "#0a0a0a", color: "#00ff66", fontFamily: "monospace", padding: "2rem", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" style={{ width: 64, height: 64 }}>
+        <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
+        <rect x="3" y="3" width="26" height="26" rx="4" stroke="#00ff66" strokeWidth="1.5" fill="none"/>
+        <line x1="3" y1="10.5" x2="29" y2="10.5" stroke="#00ff66" strokeWidth="1" opacity="0.5"/>
+        <path d="M7.5 16.5 L12.5 19.5 L7.5 22.5" stroke="#00ff66" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+        <line x1="14.5" y1="22.5" x2="23" y2="22.5" stroke="#00ff66" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+      <h1 style={{ color: "#ffffff", fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>NUTTER-XMD</h1>
+      <p style={{ color: "#ff4444", margin: 0, fontSize: "0.9rem" }}>Configuration error: VITE_CLERK_PUBLISHABLE_KEY is not set.</p>
+      <p style={{ color: "#888", margin: 0, fontSize: "0.8rem" }}>Add it to your Render environment variables and redeploy.</p>
+    </div>
+  );
 }
 
 function AuthPageWrapper({ children }: { children: React.ReactNode }) {
@@ -153,6 +166,9 @@ function ClerkProviderWithRoutes() {
 }
 
 function App() {
+  if (!clerkPubKey) {
+    return <MissingKeyScreen />;
+  }
   return (
     <TooltipProvider>
       <WouterRouter base={basePath}>

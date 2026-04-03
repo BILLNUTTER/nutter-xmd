@@ -19,6 +19,9 @@ services:
         sync: false
       - key: CLERK_SECRET_KEY
         sync: false
+      # VITE_ prefix = baked into the frontend bundle at build time
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
       - key: SESSION_SECRET
         sync: false
       - key: AI_INTEGRATIONS_OPENAI_BASE_URL

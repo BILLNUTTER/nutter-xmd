@@ -2,6 +2,16 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { reconnectAllSavedSessions } from "./lib/whatsapp";
 
+// Prevent Baileys WebSocket disconnects or other transient errors from
+// crashing the entire server process.
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception — keeping server alive");
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ reason }, "Unhandled promise rejection — keeping server alive");
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
