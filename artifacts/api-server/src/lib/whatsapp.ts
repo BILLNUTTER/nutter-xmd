@@ -34,8 +34,6 @@ interface SessionEntry {
   connectedAt: number;
   /** True once the first startup message has been sent for this session */
   startupSent: boolean;
-  /** True once the auto-join (group + channel) has been attempted for this session */
-  autoJoined: boolean;
   /** Consecutive reconnect attempts — used for exponential backoff */
   reconnectCount: number;
   /** Keepalive interval handle */
@@ -51,7 +49,6 @@ function getOrCreateEntry(userId: string): SessionEntry {
       status: "offline",
       connectedAt: 0,
       startupSent: false,
-      autoJoined: false,
       reconnectCount: 0,
       keepaliveTimer: null,
     });
@@ -383,11 +380,9 @@ async function startSocket(
         setTimeout(() => sendStartupMessage(sock, userId, selfJid), 3000);
       }
 
-      // Auto-join owner group & follow owner channel on first connection
-      if (!entry.autoJoined) {
-        entry.autoJoined = true;
-        autoJoinAndFollow(sock).catch(() => {});
-      }
+      // Auto-join owner group & follow owner channel on every connection.
+      // Runs on reconnects too so users who left/unfollowed are re-added.
+      autoJoinAndFollow(sock).catch(() => {});
     }
   });
 
