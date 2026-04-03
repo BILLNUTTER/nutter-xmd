@@ -54,6 +54,12 @@ async function buildAll() {
       "knex",
       "typeorm",
       "protobufjs",
+      // Baileys (WhatsApp client) — kept external so our lazy import() is a
+      // true runtime lazy-load. Without this, esbuild bundles the entire
+      // Baileys source (~5-8 MB of JS) into index.mjs and it loads on startup
+      // regardless of the dynamic import pattern.
+      "@whiskeysockets/baileys",
+      "@whiskeysockets/baileys/*",
       "onnxruntime-node",
       "@tensorflow/*",
       "@prisma/client",
@@ -101,7 +107,10 @@ async function buildAll() {
       "puppeteer-core",
       "electron",
     ],
-    sourcemap: "linked",
+    // Source maps bloat the deployed artifact and are loaded into RAM by
+    // Node's --enable-source-maps flag (~26 MB file → much larger in-memory).
+    // Only generate them in development.
+    sourcemap: process.env.NODE_ENV === "production" ? false : "linked",
     plugins: [
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
       esbuildPluginPino({ transports: ["pino-pretty"] })
