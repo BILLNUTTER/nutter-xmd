@@ -14,6 +14,10 @@ import { eq } from "drizzle-orm";
 import { db, botsTable, whatsappAuthTable } from "@workspace/db";
 import { handleCommand } from "../commands/index";
 
+// Messages older than this timestamp (set at module load) are ignored when the
+// bot reconnects to avoid executing a backlog of stale commands.
+const BOT_STARTED_AT = Date.now();
+
 interface SessionEntry {
   socket: WASocket | null;
   qrCode: string | null;
@@ -274,6 +278,22 @@ async function startSocket(
 
       const jid = msg.key.remoteJid;
       const sentAt = (msg.messageTimestamp as number) * 1000 || Date.now();
+
+      // ── Stale-message guard ───────────────────────────────────────────────
+      // When Baileys reconnects after a crash it replays queued messages as
+      // "notify". Ignore anything that arrived BEFORE this server process
+      // started (with a 15-second buffer for clock drift / startup latency).
+      if (sentAt < BOT_STARTED_AT - 15_000) continue;
+
+      // ── Skip protocol / reaction / poll-update noise ──────────────────────
+      const m = msg.message;
+      if (
+        m.protocolMessage ||
+        m.reactionMessage ||
+        m.pollUpdateMessage ||
+        m.keepInChatMessage
+      ) continue;
+
       const settings = await getBotSettings(userId);
 
       // Auto-read
@@ -286,28 +306,43 @@ async function startSocket(
         try { await sock.sendPresenceUpdate("available", jid); } catch {}
       }
 
+      // ── Body extraction — handle all WhatsApp message wrappers ───────────
       const body =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        msg.message.imageMessage?.caption ||
-        msg.message.videoMessage?.caption ||
+        m.conversation ||
+        m.extendedTextMessage?.text ||
+        m.imageMessage?.caption ||
+        m.videoMessage?.caption ||
+        m.documentMessage?.caption ||
+        m.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+        m.viewOnceMessage?.message?.imageMessage?.caption ||
+        m.viewOnceMessage?.message?.videoMessage?.caption ||
+        m.viewOnceMessageV2?.message?.imageMessage?.caption ||
+        m.viewOnceMessageV2?.message?.videoMessage?.caption ||
+        m.ephemeralMessage?.message?.conversation ||
+        m.ephemeralMessage?.message?.extendedTextMessage?.text ||
+        m.buttonsResponseMessage?.selectedDisplayText ||
+        m.listResponseMessage?.title ||
+        m.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson ||
+        m.templateButtonReplyMessage?.selectedDisplayText ||
         "";
 
       if (!body.trim()) continue;
 
-      // Typing indicator when processing commands
+      console.log(`[msg] jid=${jid} fromMe=${msg.key.fromMe} body="${body.slice(0, 80)}"`);
+
+      // ── Typing indicator when processing a command ────────────────────────
       if (settings.typingStatus && body.startsWith(settings.prefix)) {
         try { await sock.sendPresenceUpdate("composing", jid); } catch {}
         setTimeout(async () => { try { await sock.sendPresenceUpdate("paused", jid); } catch {} }, 2000);
       }
 
-      // Command handling
+      // ── Command dispatch ──────────────────────────────────────────────────
       if (body.startsWith(settings.prefix)) {
         await handleCommand(sock, userId, jid, body, settings.prefix, sentAt, msg, settings.mode);
         continue;
       }
 
-      // Auto-reply chatbot (only in DMs, not groups, when enabled)
+      // ── Auto-reply chatbot (DMs only, when enabled, not from bot itself) ──
       if (settings.autoReply && !msg.key.fromMe && !jid.endsWith("@g.us")) {
         const replyMsg = settings.autoReplyMessage || "I'm currently unavailable. Please try later.";
         try { await sock.sendMessage(jid, { text: replyMsg }); } catch {}
