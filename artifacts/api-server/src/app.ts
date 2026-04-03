@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
+import path from "path";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -36,6 +37,23 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(clerkMiddleware());
 
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 app.use("/api", router);
+
+// In production (Render), serve the built React frontend as static files.
+// The build process outputs the frontend to artifacts/nutter-xmd/dist/public.
+if (process.env.NODE_ENV === "production") {
+  const staticDir = path.join(process.cwd(), "artifacts/nutter-xmd/dist/public");
+  app.use(express.static(staticDir));
+  // SPA fallback: any route that isn't /api/* gets index.html
+  app.get("*", (req, res) => {
+    if (!req.path.startsWith("/api/") && !req.path.startsWith("/__clerk")) {
+      res.sendFile(path.join(staticDir, "index.html"));
+    }
+  });
+}
 
 export default app;
