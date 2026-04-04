@@ -706,17 +706,12 @@ async function startSocket(
             if (mentionedJids.length >= 1) {
               const isBotAdm = await isBotAdmin(sock, jid, botJid);
               if (isBotAdm) {
-                // Don't kick group admins — just delete their message silently
-                const senderIsAdmin = await isParticipantAdmin(sock, jid, senderJid);
                 try {
                   await sock.sendMessage(jid, { delete: msg.key });
-                  if (!senderIsAdmin) {
-                    await sock.sendMessage(jid, {
-                      text: `🚫 @${senderJid.split("@")[0]} *was removed for tagging members.*\n_by_ *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡`,
-                      mentions: [senderJid],
-                    });
-                    await sock.groupParticipantsUpdate(jid, [senderJid], "remove");
-                  }
+                  await sock.sendMessage(jid, {
+                    text: `🚫 @${senderJid.split("@")[0]} *tagging is not allowed in this group.*\n_by_ *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡`,
+                    mentions: [senderJid],
+                  });
                 } catch {}
                 continue;
               }
