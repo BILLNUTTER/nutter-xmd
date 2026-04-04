@@ -14,7 +14,7 @@ import {
   Shield, Globe, Lock, Phone, MessageSquare, BellOff, Link2Off,
   UserCheck, EyeOff, Activity, Radio, Clock, Users, LogOut,
   Save, AlertTriangle, Hash, Settings2, Sticker, Tag, Swords,
-  ThumbsUp, Heart, Sparkles, X, Plus,
+  ThumbsUp, Heart, Sparkles, X, Plus, Copy, Check,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,9 @@ export default function Dashboard() {
 
   const [pairPhone, setPairPhone] = useState("");
   const [pairCode, setPairCode] = useState<string | null>(null);
+  const [pairError, setPairError] = useState<string | null>(null);
   const [showPairInput, setShowPairInput] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
   const [autoReplyMsg, setAutoReplyMsg] = useState("");
   const [prefixInput, setPrefixInput] = useState("");
   const [newBadWord, setNewBadWord] = useState("");
@@ -139,17 +141,34 @@ export default function Dashboard() {
 
   const handleRequestPairCode = () => {
     if (!pairPhone.trim()) return;
+    setPairError(null);
     getBotPairCode.mutate(
       { data: { phoneNumber: pairPhone } },
       {
         onSuccess: (data) => {
           setPairCode(data.code);
+          setPairError(null);
           queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() });
-          toast({ title: "Pairing code generated", description: "Enter this code in WhatsApp" });
         },
-        onError: () => toast({ title: "Failed to generate code", variant: "destructive" }),
+        onError: (err: any) => {
+          const msg: string =
+            err?.data?.error ?? err?.message ?? "Failed to generate pairing code";
+          setPairError(msg);
+          toast({ title: "Could not generate pairing code", description: msg, variant: "destructive" });
+        },
       }
     );
+  };
+
+  const handleCopyCode = async () => {
+    if (!pairCode) return;
+    try {
+      await navigator.clipboard.writeText(pairCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      toast({ title: "Copy failed — please select and copy manually" });
+    }
   };
 
   const handleDisconnect = () => {
@@ -441,15 +460,34 @@ export default function Dashboard() {
                         </Button>
                       </div>
 
+                      {pairError && (
+                        <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>{pairError}</span>
+                        </div>
+                      )}
+
                       {pairCode && (
-                        <div className="flex items-center justify-center p-4 bg-primary/10 border border-primary/30 rounded-lg">
-                          <div className="text-center">
-                            <p className="text-xs text-muted-foreground mb-1">Your Pairing Code</p>
-                            <p className="text-3xl font-bold font-mono text-primary tracking-widest" data-testid="text-pair-code">
+                        <div className="p-4 bg-primary/10 border border-primary/30 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-2 text-center">Your Pairing Code</p>
+                          <div className="flex items-center justify-center gap-3">
+                            <p
+                              className="text-3xl font-bold font-mono text-primary tracking-widest select-all"
+                              data-testid="text-pair-code"
+                            >
                               {pairCode}
                             </p>
-                            <p className="text-xs text-muted-foreground mt-1">Enter this in WhatsApp</p>
+                            <button
+                              onClick={handleCopyCode}
+                              className="shrink-0 p-2 rounded-md border border-primary/30 bg-primary/10 hover:bg-primary/20 transition-colors text-primary"
+                              title="Copy code"
+                            >
+                              {codeCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            </button>
                           </div>
+                          <p className="text-xs text-muted-foreground mt-2 text-center">
+                            Open WhatsApp → Settings → Linked Devices → Link with phone number
+                          </p>
                         </div>
                       )}
                     </div>

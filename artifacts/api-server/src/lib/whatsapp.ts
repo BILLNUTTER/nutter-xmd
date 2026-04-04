@@ -34,6 +34,9 @@ interface SessionEntry {
   connectedAt: number;
   /** True once the first startup message has been sent for this session */
   startupSent: boolean;
+  /** When true the socket is in pairing-code mode — suppress auto-reconnects
+   *  so WhatsApp's brief mid-handshake disconnects don't kill the pairing flow */
+  pairingMode: boolean;
   /** Consecutive reconnect attempts — used for exponential backoff */
   reconnectCount: number;
   /** Keepalive interval handle */
@@ -49,6 +52,7 @@ function getOrCreateEntry(userId: string): SessionEntry {
       status: "offline",
       connectedAt: 0,
       startupSent: false,
+      pairingMode: false,
       reconnectCount: 0,
       keepaliveTimer: null,
     });
@@ -338,6 +342,13 @@ async function startSocket(
         entry.reconnectCount = 0;
         const newEntry = getOrCreateEntry(userId);
         setTimeout(() => startSocket(userId, newEntry, onStatusChange), 3 * 60_000);
+      } else if (entry.pairingMode) {
+        // During pairing WhatsApp sometimes briefly drops the socket as part
+        // of the handshake negotiation. Reconnecting here would invalidate the
+        // pairing code we already sent to the user. Suppress the reconnect and
+        // let the pairing flow complete naturally (the next connection.update
+        // with connection === "open" will clear pairingMode).
+        console.log(`[whatsapp] Socket closed in pairing mode for userId=${userId}. Suppressing reconnect to preserve pairing code.`);
       } else {
         // Exponential backoff: 5s, 10s, 20s, 40s … max 120s
         const delay = Math.min(5000 * Math.pow(2, entry.reconnectCount), 120_000);
@@ -351,6 +362,7 @@ async function startSocket(
       entry.reconnectCount = 0;
       entry.connectedAt = Date.now();
       entry.status = "online";
+      entry.pairingMode = false; // pairing complete — restore normal reconnect behaviour
       onStatusChange?.("online");
 
       try {
@@ -669,8 +681,12 @@ export async function requestPairingCode(userId: string, phoneNumber: string) {
   // Wipe stored credentials so Baileys treats this as a brand-new device
   await clearDatabaseAuthState(userId);
 
-  // Start a fresh socket (sets up all event handlers for when the user approves)
+  // Start a fresh socket in pairing mode.
+  // pairingMode=true tells the connection.update close handler to NOT
+  // auto-reconnect (WhatsApp briefly drops the socket during pairing handshake
+  // which would otherwise kill the pairing code we're about to generate).
   const entry = getOrCreateEntry(userId);
+  entry.pairingMode = true;
   const sock = await startSocket(userId, entry);
 
   // Wait until the socket has completed the noise-protocol handshake and is
