@@ -153,6 +153,11 @@ overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   esbuild: 0.27.3
 
+patchedDependencies:
+  '@whiskeysockets/baileys@6.7.21':
+    hash: 2270a516316ea7d0d21cd481eabfde13f0d7099a5fd56f0ce59332f62986ec04
+    path: patches/@whiskeysockets__baileys@6.7.21.patch
+
 importers:
 
   .:
@@ -177,7 +182,7 @@ importers:
         version: 10.0.1
       '@whiskeysockets/baileys':
         specifier: ^6.7.21
-        version: 6.7.21
+        version: 6.7.21(patch_hash=2270a516316ea7d0d21cd481eabfde13f0d7099a5fd56f0ce59332f62986ec04)
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -5067,7 +5072,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@whiskeysockets/baileys@6.7.21':
+  '@whiskeysockets/baileys@6.7.21(patch_hash=2270a516316ea7d0d21cd481eabfde13f0d7099a5fd56f0ce59332f62986ec04)':
     dependencies:
       '@cacheable/node-cache': 1.7.6
       '@hapi/boom': 9.1.4

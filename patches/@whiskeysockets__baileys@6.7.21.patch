@@ -1,0 +1,55 @@
+diff --git a/lib/Socket/socket.js b/lib/Socket/socket.js
+index 1111111..2222222 100644
+--- a/lib/Socket/socket.js
++++ b/lib/Socket/socket.js
+@@ -170,6 +170,7 @@
+             }
+         }).finish());
+         noise.finishInit();
++        ev.emit('CB:noise-ready', null);
+         startKeepAliveRequest();
+     };
+     const getAvailablePreKeysOnServer = async () => {
+@@ -359,7 +360,7 @@
+             name: '~'
+         };
+         ev.emit('creds.update', authState.creds);
+-        await sendNode({
++        const pairingIqResult = await query({
+             tag: 'iq',
+             attrs: {
+                 to: S_WHATSAPP_NET,
+@@ -399,12 +400,16 @@
+                         {
+                             tag: 'link_code_pairing_nonce',
+                             attrs: {},
+-                            content: '0'
++                            content: Buffer.from([0])
+                         }
+                     ]
+                 }
+             ]
++        }).catch(err => {
++            logger.error({ errCode: err?.data, errAttrs: err?._errAttrs, rawNode: err?._rawNode }, '[patch] companion_hello IQ returned error from WA');
++            throw err;
+         });
++        logger.info({ pairingIqResult: JSON.stringify(pairingIqResult).slice(0, 800) }, '[patch] companion_hello IQ accepted by WA');
+         return authState.creds.pairingCode;
+     };
+     async function generatePairingKey() {
+diff --git a/lib/WABinary/generic-utils.js b/lib/WABinary/generic-utils.js
+index 3333333..4444444 100644
+--- a/lib/WABinary/generic-utils.js
++++ b/lib/WABinary/generic-utils.js
+@@ -43,7 +43,10 @@
+ export const assertNodeErrorFree = (node) => {
+     const errNode = getBinaryNodeChild(node, 'error');
+     if (errNode) {
+-        throw new Boom(errNode.attrs.text || 'Unknown error', { data: +errNode.attrs.code });
++        const err = new Boom(errNode.attrs.text || 'Unknown error', { data: +errNode.attrs.code });
++        err._rawNode = JSON.stringify(node, (k, v) => (v instanceof Uint8Array || Buffer.isBuffer(v)) ? '[Buffer]' : v);
++        err._errAttrs = JSON.stringify(errNode.attrs);
++        throw err;
+     }
+ };
+ export const reduceBinaryNodeToDictionary = (node, tag) => {

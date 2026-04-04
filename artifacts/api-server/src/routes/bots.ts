@@ -47,6 +47,7 @@ router.get("/bot", requireAuth, async (req: any, res): Promise<void> => {
     const liveStatus = getSessionStatus(req.userId);
     res.json({ ...bot, status: liveStatus === "offline" ? bot.status : liveStatus });
   } catch (err) {
+    console.error("[bots] GET /bot error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
