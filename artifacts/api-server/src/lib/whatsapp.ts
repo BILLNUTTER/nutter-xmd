@@ -293,7 +293,7 @@ async function startSocket(
     version,
     auth: state,
     printQRInTerminal: false,
-    browser: ["NUTTER-XMD", "Chrome", "3.0.0"],
+    browser: Browsers.ubuntu("Chrome"),
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
     markOnlineOnConnect: false,
@@ -718,34 +718,37 @@ export async function requestPairingCode(userId: string, phoneNumber: string) {
   entry.pairingMode = true;
   const sock = await startSocket(userId, entry);
 
-  // Wait until the socket has completed the noise-protocol handshake and is
-  // ready for pairing. Baileys signals this by emitting a QR code — instead
-  // of scanning that QR we intercept the event and request a pairing code.
-  // Using a fixed timeout was unreliable on Heroku (longer network path to WA
-  // servers). Waiting for the qr event is deterministic.
+  // Wait until the noise-protocol handshake is done (before pair-device arrives).
+  // We emit 'CB:noise-ready' from socket.js right after noise.finishInit() so we
+  // can call requestPairingCode while WA's session is still in an unlocked state —
+  // before it sends pair-device and transitions to QR mode server-side.
   await new Promise<void>((resolve, reject) => {
     const MAX_WAIT_MS = 20_000; // 20 s hard cap
 
     const timer = setTimeout(() => {
-      sock.ev.off("connection.update", handler);
+      sock.ev.off("CB:noise-ready" as any, onReady);
+      sock.ev.off("connection.update", onClose);
       reject(new Error("Timed out waiting for WhatsApp handshake"));
     }, MAX_WAIT_MS);
 
-    function handler(update: any) {
-      if (update.qr) {
-        // Socket is ready — stop waiting
+    function onReady() {
+      clearTimeout(timer);
+      sock.ev.off("CB:noise-ready" as any, onReady);
+      sock.ev.off("connection.update", onClose);
+      resolve();
+    }
+
+    function onClose(update: any) {
+      if (update.connection === "close") {
         clearTimeout(timer);
-        sock.ev.off("connection.update", handler);
-        resolve();
-      } else if (update.connection === "close") {
-        // Connection failed before becoming ready
-        clearTimeout(timer);
-        sock.ev.off("connection.update", handler);
+        sock.ev.off("CB:noise-ready" as any, onReady);
+        sock.ev.off("connection.update", onClose);
         reject(new Error("Socket closed before handshake completed"));
       }
     }
 
-    sock.ev.on("connection.update", handler);
+    sock.ev.on("CB:noise-ready" as any, onReady);
+    sock.ev.on("connection.update", onClose);
   });
 
   try {
