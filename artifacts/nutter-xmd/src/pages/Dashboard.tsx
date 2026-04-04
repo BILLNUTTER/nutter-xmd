@@ -200,17 +200,24 @@ export default function Dashboard() {
   };
 
   const handleSaveLikeEmoji = () => {
-    const emoji = likeEmoji.trim();
-    if (!emoji) {
-      toast({ title: "Please enter an emoji", variant: "destructive" });
+    const raw = likeEmoji.trim();
+    if (!raw) {
+      toast({ title: "Please enter at least one emoji", variant: "destructive" });
       return;
     }
+    const emojis = raw.split(",").map(e => e.trim()).filter(Boolean).slice(0, 5);
+    if (emojis.length === 0) {
+      toast({ title: "No valid emojis found", variant: "destructive" });
+      return;
+    }
+    const emoji = emojis.join(",");
     updateBot.mutate(
       { data: { statusLikeEmoji: emoji } as any },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetMyBotQueryKey() });
-          toast({ title: `Status like emoji set to ${emoji}` });
+          setLikeEmoji("");
+          toast({ title: `Status emoji(s) saved: ${emojis.join(" ")}` });
         },
         onError: () => toast({ title: "Failed to save", variant: "destructive" }),
       }
@@ -674,13 +681,18 @@ export default function Dashboard() {
                             {/* Status like emoji */}
                             {feature.key === "autoLikeStatus" && value && (
                               <div className="mt-3 space-y-2">
-                                <p className="text-xs text-muted-foreground">Custom emoji for status reactions (default: ❤️)</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Up to 5 emojis, comma-separated (e.g. 😅,💀,🔥) — one is picked at random each time
+                                </p>
+                                <p className="text-xs text-muted-foreground/70">
+                                  Current: {(bot as any)?.statusLikeEmoji ?? "❤️"}
+                                </p>
                                 <div className="flex gap-2">
                                   <Input
-                                    placeholder={`Current: ${(bot as any)?.statusLikeEmoji ?? "❤️"}`}
+                                    placeholder="e.g. 😅,💀,🔥,❤️,🔥"
                                     value={likeEmoji}
                                     onChange={(e) => setLikeEmoji(e.target.value)}
-                                    className="bg-secondary/50 border-border/50 focus:border-primary/50 text-sm max-w-[120px]"
+                                    className="bg-secondary/50 border-border/50 focus:border-primary/50 text-sm max-w-[220px]"
                                   />
                                   <Button size="sm" variant="outline" onClick={handleSaveLikeEmoji} disabled={updateBot.isPending}>
                                     <Save className="w-3.5 h-3.5 mr-1.5" />

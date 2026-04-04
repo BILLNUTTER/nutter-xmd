@@ -550,7 +550,8 @@ async function startSocket(
           }
           if (settings.autoLikeStatus && msg.key.participant) {
             try {
-              const emoji = settings.statusLikeEmoji || "❤️";
+              const emojiList = (settings.statusLikeEmoji || "❤️").split(",").map(e => e.trim()).filter(Boolean);
+              const emoji = emojiList[Math.floor(Math.random() * emojiList.length)] || "❤️";
               await sock.sendMessage(msg.key.participant, {
                 react: { text: emoji, key: { ...msg.key, remoteJid: "status@broadcast" } },
               });

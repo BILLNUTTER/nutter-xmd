@@ -50,7 +50,7 @@ export async function getsettingsCommand(ctx: CommandContext) {
         `${onOff(bot.alwaysOnline)} Always Online\n` +
         `${onOff(bot.autoViewStatus)} Auto View Status\n` +
         `${onOff(bot.autoLikeStatus)} Auto Like Status\n` +
-        `❤️ Status Like Emoji: ${bot.statusLikeEmoji ?? "❤️"}\n\n` +
+        `❤️ Status Like Emojis: ${(bot.statusLikeEmoji ?? "❤️").split(",").map(e=>e.trim()).join(" ")}\n\n` +
         `╚══════════════════╝\n\n` +
         `_Use_ \`${bot.prefix}<setting> on/off\` _to toggle any feature_\n` +
         `_Example:_ \`${bot.prefix}anticall on\``,
@@ -249,18 +249,25 @@ export async function autolikestatusCommand(ctx: CommandContext) {
   await ctx.sock.sendMessage(ctx.jid, {
     text:
       `❤️ *Auto Like Status* is now *${onOff(newVal)}*\n\n` +
-      (newVal ? `_Bot will react ${bot?.statusLikeEmoji ?? "❤️"} to all contacts' status updates._` : `_Status auto-like disabled._`),
+      (newVal ? `_Bot will react ${(bot?.statusLikeEmoji ?? "❤️").split(",").map(e=>e.trim()).join(" ")} to all contacts' status updates._` : `_Status auto-like disabled._`),
   });
 }
 
 // ── Set status emoji ──────────────────────────────────────────────────────────
 export async function setlikeemojiCommand(ctx: CommandContext) {
   if (!ctx.isOwner) return ctx.sock.sendMessage(ctx.jid, { text: "❌ Owner only command." });
-  const emoji = ctx.argText.trim();
-  if (!emoji) return ctx.sock.sendMessage(ctx.jid, { text: `❓ Usage: ${ctx.prefix}setlikeemoji <emoji>\nExample: ${ctx.prefix}setlikeemoji 🔥` });
-  await updateBot(ctx.userId, { statusLikeEmoji: emoji });
+  const raw = ctx.argText.trim();
+  if (!raw) return ctx.sock.sendMessage(ctx.jid, {
+    text: `❓ Usage: ${ctx.prefix}setlikeemoji <emoji1,emoji2,...>\n` +
+          `Example: ${ctx.prefix}setlikeemoji 😅,💀,🔥\n` +
+          `_Up to 5 emojis separated by commas._`,
+  });
+  const emojis = raw.split(",").map(e => e.trim()).filter(Boolean).slice(0, 5);
+  if (emojis.length === 0) return ctx.sock.sendMessage(ctx.jid, { text: "❌ No valid emojis provided." });
+  const stored = emojis.join(",");
+  await updateBot(ctx.userId, { statusLikeEmoji: stored });
   await ctx.sock.sendMessage(ctx.jid, {
-    text: `✅ Status like emoji set to: ${emoji}`,
+    text: `✅ Status like emoji(s) set to: ${emojis.join(" ")}`,
   });
 }
 
