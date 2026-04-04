@@ -67,6 +67,21 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // In Replit dev, VITE_API_URL is not set so the frontend uses relative
+    // paths. Proxy /api/* to the local API server so we can test end-to-end
+    // without deploying to Heroku.
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/__clerk": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
     port,
