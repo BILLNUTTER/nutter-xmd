@@ -205,21 +205,63 @@ export async function sayCommand(ctx: CommandContext) {
   await ctx.sock.sendMessage(ctx.jid, { text });
 }
 
-export async function getppCommand(ctx: CommandContext) {
+/** Resolve the target JID for .dp/.getpp:
+ *  1. Phone number arg  →  e.g. .dp 254712345678
+ *  2. Reply to message  →  the sender of the quoted message
+ *  3. @mention          →  first mentioned JID
+ *  4. Fallback          →  the person who sent the command
+ */
+function resolveProfileTarget(ctx: CommandContext): string {
+  // 1️⃣ Phone number argument (digits only, optionally with + or spaces)
+  const numArg = ctx.args[0]?.replace(/\D/g, "");
+  if (numArg && numArg.length >= 7) {
+    return `${numArg}@s.whatsapp.net`;
+  }
+
+  // 2️⃣ Reply to a message — grab the original sender
+  const ci = getQuotedContext(ctx.msg);
+  if (ci?.participant) return ci.participant;
+  if (ci?.stanzaId) {
+    // group message: remoteJid is the group, participant is the sender
+    // dm reply: participant may be undefined, use remoteJid as sender
+    const fromMe = ctx.msg.key.fromMe;
+    return fromMe ? ctx.senderJid : (ci.remoteJid ?? ctx.senderJid);
+  }
+
+  // 3️⃣ @mention
   const mentioned = ctx.msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-  const quoted = ctx.msg.message?.extendedTextMessage?.contextInfo?.participant;
-  const target = mentioned ?? quoted ?? ctx.senderJid;
+  if (mentioned) return mentioned;
+
+  // 4️⃣ Fallback → own profile
+  return ctx.senderJid;
+}
+
+export async function getppCommand(ctx: CommandContext) {
+  return dpCommand(ctx);
+}
+
+export async function dpCommand(ctx: CommandContext) {
+  const target = resolveProfileTarget(ctx);
+  const displayNum = target.split("@")[0];
+
   try {
     const url = await ctx.sock.profilePictureUrl(target, "image");
     if (!url) {
-      await ctx.sock.sendMessage(ctx.jid, { text: "❌ No profile picture found or it's hidden." });
+      await ctx.sock.sendMessage(ctx.jid, {
+        text: `❌ No profile picture found for *+${displayNum}* — it may be hidden or the number is not on WhatsApp.`,
+      });
       return;
     }
     const res = await axios.get(url, { responseType: "arraybuffer", timeout: 10000 });
     const buffer = Buffer.from(res.data);
-    await ctx.sock.sendMessage(ctx.jid, { image: buffer, caption: `👤 *Profile Picture*` });
+    await ctx.sock.sendMessage(ctx.jid, {
+      image: buffer,
+      caption: `👤 *Profile Picture*\n📞 +${displayNum}`,
+    });
   } catch {
-    await ctx.sock.sendMessage(ctx.jid, { text: "❌ Could not fetch profile picture. The user may have hidden it." });
+    await ctx.sock.sendMessage(ctx.jid, {
+      text: `❌ Could not fetch profile picture for *+${displayNum}*. The user may have hidden it.`,
+    });
   }
 }
 

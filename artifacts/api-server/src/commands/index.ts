@@ -3,7 +3,7 @@ import type { CommandContext } from "./context";
 import { menuCommand } from "./menu";
 import { gptCommand, geminiCommand, blackboxCommand, deepseekCommand, codeCommand, analyzeCommand, summarizeCommand, translateCommand, recipeCommand, storyCommand, teachCommand, generateCommand } from "./ai";
 import { factCommand, jokesCommand, quotesCommand, triviaCommand, truthCommand, dareCommand, truthOrDareCommand } from "./fun";
-import { pingCommand, botstatusCommand, runtimeCommand, timeCommand, diskCommand, deviceCommand, repoCommand, calculateCommand, fancyCommand, fliptextCommand, genpassCommand, qrcodeCommand, tinyurlCommand, sayCommand, getppCommand, stickerCommand, vvCommand, vv2Command, pairCommand, emojimixCommand, testCommand, aliveCommand } from "./tools";
+import { pingCommand, botstatusCommand, runtimeCommand, timeCommand, diskCommand, deviceCommand, repoCommand, calculateCommand, fancyCommand, fliptextCommand, genpassCommand, qrcodeCommand, tinyurlCommand, sayCommand, getppCommand, dpCommand, stickerCommand, vvCommand, vv2Command, pairCommand, emojimixCommand, testCommand, aliveCommand } from "./tools";
 import { kickCommand, promoteCommand, demoteCommand, addCommand, approveCommand, inviteCommand, openCommand, closeCommand, pollCommand, tagallCommand, hidetagCommand, kickallCommand, setgroupnameCommand, setdescCommand } from "./group";
 import { blockCommand, unblockCommand, deleteCommand, warnCommand, joinCommand, leaveCommand, onlineCommand, setbioCommand, setPrefixOwnerCommand, restartCommand } from "./owner";
 import { weatherCommand, defineCommand, imdbCommand, lyricsCommand, ytsCommand, shazamCommand } from "./search";
@@ -75,6 +75,7 @@ const COMMANDS: Record<string, (ctx: CommandContext) => Promise<unknown>> = {
   echo: sayCommand,
   getpp: getppCommand,
   pp: getppCommand,
+  dp: dpCommand,
   sticker: stickerCommand,
   s: stickerCommand,
   vv: vvCommand,
