@@ -6,3 +6,9 @@ id = "laLom57yQk_bNiVJVyJur"
 uri = "file://artifacts/nutter-xmd/src/assets/hero-bg.png"
 type = "image"
 title = "Cyberpunk hacker dashboard UI"
+
+[[generated]]
+id = "8Wzu8vnxRXa1VGxWjEBBg"
+uri = "file://artifacts/api-server/src/assets/menu-banner.png"
+type = "image"
+title = "nutter-xmd cyberpunk banner"
