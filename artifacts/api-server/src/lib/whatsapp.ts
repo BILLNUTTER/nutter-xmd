@@ -294,16 +294,20 @@ async function startSocket(
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      try {
-        const dataUrl = await QRCode.toDataURL(qr, {
-          width: 300, margin: 2,
-          color: { dark: "#000000", light: "#ffffff" },
-        });
-        await db.update(botsTable).set({ qrCode: dataUrl, status: "connecting" })
-          .where(eq(botsTable.userId, userId));
-      } catch {
-        await db.update(botsTable).set({ qrCode: qr, status: "connecting" })
-          .where(eq(botsTable.userId, userId));
+      // In pairing-code mode the QR event fires again on every reconnect but we
+      // don't want to surface it — the user already has a pairing code to enter.
+      if (!entry.pairingMode) {
+        try {
+          const dataUrl = await QRCode.toDataURL(qr, {
+            width: 300, margin: 2,
+            color: { dark: "#000000", light: "#ffffff" },
+          });
+          await db.update(botsTable).set({ qrCode: dataUrl, status: "connecting" })
+            .where(eq(botsTable.userId, userId));
+        } catch {
+          await db.update(botsTable).set({ qrCode: qr, status: "connecting" })
+            .where(eq(botsTable.userId, userId));
+        }
       }
       entry.status = "connecting";
       onStatusChange?.("connecting");
@@ -343,12 +347,15 @@ async function startSocket(
         const newEntry = getOrCreateEntry(userId);
         setTimeout(() => startSocket(userId, newEntry, onStatusChange), 3 * 60_000);
       } else if (entry.pairingMode) {
-        // During pairing WhatsApp sometimes briefly drops the socket as part
-        // of the handshake negotiation. Reconnecting here would invalidate the
-        // pairing code we already sent to the user. Suppress the reconnect and
-        // let the pairing flow complete naturally (the next connection.update
-        // with connection === "open" will clear pairingMode).
-        console.log(`[whatsapp] Socket closed in pairing mode for userId=${userId}. Suppressing reconnect to preserve pairing code.`);
+        // During the pairing-code flow WhatsApp disconnects the socket as part
+        // of its internal routing. The pairing code remains valid on WA's servers;
+        // we must reconnect so our socket is alive to receive the pair-success
+        // event when the user enters the code on their phone. Do NOT clear
+        // pairingMode — it stays true until connection === "open" fires.
+        console.log(`[whatsapp] Socket closed in pairing mode for userId=${userId}. Reconnecting to await pair-success…`);
+        const newEntry = getOrCreateEntry(userId);
+        // Short fixed delay — just enough to avoid a tight loop
+        setTimeout(() => startSocket(userId, newEntry, onStatusChange), 2_000);
       } else {
         // Exponential backoff: 5s, 10s, 20s, 40s … max 120s
         const delay = Math.min(5000 * Math.pow(2, entry.reconnectCount), 120_000);
