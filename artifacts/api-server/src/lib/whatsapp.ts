@@ -694,24 +694,30 @@ async function startSocket(
           }
 
           if (settings.antiTag) {
-            // Collect mentions from all possible message types
-            const mentionedJids: string[] = [
-              ...(m.extendedTextMessage?.contextInfo?.mentionedJid ?? []),
-              ...(m.imageMessage?.contextInfo?.mentionedJid ?? []),
-              ...(m.videoMessage?.contextInfo?.mentionedJid ?? []),
-              ...(m.documentMessage?.contextInfo?.mentionedJid ?? []),
-              ...(m.audioMessage?.contextInfo?.mentionedJid ?? []),
-            ].filter((v, i, a) => a.indexOf(v) === i); // deduplicate
+            // Only target STATUS → GROUP mentions (contextInfo.groupMentions).
+            // Regular @user mentions (mentionedJid) in group chat are allowed.
+            const groupMentions: unknown[] = [
+              ...(m.extendedTextMessage?.contextInfo?.groupMentions ?? []),
+              ...(m.imageMessage?.contextInfo?.groupMentions ?? []),
+              ...(m.videoMessage?.contextInfo?.groupMentions ?? []),
+              ...(m.documentMessage?.contextInfo?.groupMentions ?? []),
+              ...(m.audioMessage?.contextInfo?.groupMentions ?? []),
+              ...(m.stickerMessage?.contextInfo?.groupMentions ?? []),
+            ];
 
-            if (mentionedJids.length >= 1) {
+            if (groupMentions.length >= 1) {
               const isBotAdm = await isBotAdmin(sock, jid, botJid);
               if (isBotAdm) {
+                const senderIsAdmin = await isParticipantAdmin(sock, jid, senderJid);
                 try {
                   await sock.sendMessage(jid, { delete: msg.key });
-                  await sock.sendMessage(jid, {
-                    text: `🚫 @${senderJid.split("@")[0]} *tagging is not allowed in this group.*\n_by_ *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡`,
-                    mentions: [senderJid],
-                  });
+                  if (!senderIsAdmin) {
+                    await sock.sendMessage(jid, {
+                      text: `🚫 @${senderJid.split("@")[0]} *was removed for mentioning this group in a status.*\n_by_ *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡`,
+                      mentions: [senderJid],
+                    });
+                    await sock.groupParticipantsUpdate(jid, [senderJid], "remove");
+                  }
                 } catch {}
                 continue;
               }
