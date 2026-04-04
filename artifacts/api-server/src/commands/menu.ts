@@ -16,9 +16,10 @@ function getBanner(): Buffer | null {
 }
 
 export async function menuCommand(ctx: CommandContext) {
-  const { sock, jid, prefix, pushName } = ctx;
+  const { sock, jid, prefix, pushName, senderJid } = ctx;
 
   const p = prefix;
+  const phone = senderJid.split("@")[0];
   const date = new Date().toLocaleString("en-GB", {
     timeZone: "Africa/Nairobi",
     weekday: "short",
@@ -30,7 +31,7 @@ export async function menuCommand(ctx: CommandContext) {
   });
 
   const menu =
-    `╰►Hey, ${pushName} 👾\n` +
+    `╰► Hey @${phone} 👾\n` +
     `╭───〔 *NUTTER-XMD* 〕──────┈\n` +
     `├──────────────\n` +
     `│✵│▸ 𝐓𝐎𝐓𝐀𝐋 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒: 103\n` +
@@ -175,8 +176,9 @@ export async function menuCommand(ctx: CommandContext) {
       image: banner,
       caption: menu,
       mimetype: "image/jpeg",
+      mentions: [senderJid],
     });
   } else {
-    await sock.sendMessage(jid, { text: menu });
+    await sock.sendMessage(jid, { text: menu, mentions: [senderJid] });
   }
 }
