@@ -4,7 +4,12 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-const connectionString = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+// In production (Heroku) use Supabase; in dev always use local Postgres so the
+// dev server never steals the production WhatsApp session.
+const isProd = process.env.NODE_ENV === "production";
+const connectionString = isProd
+  ? (process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL)
+  : (process.env.DATABASE_URL || process.env.SUPABASE_DATABASE_URL);
 
 if (!connectionString) {
   throw new Error(
@@ -12,9 +17,11 @@ if (!connectionString) {
   );
 }
 
+const useSupabaseSsl = isProd && !!process.env.SUPABASE_DATABASE_URL;
+
 export const pool = new Pool({
   connectionString,
-  ssl: process.env.SUPABASE_DATABASE_URL ? { rejectUnauthorized: false } : undefined,
+  ssl: useSupabaseSsl ? { rejectUnauthorized: false } : undefined,
   // Keep below Supabase PgBouncer session-mode pool_size to avoid
   // "MaxClientsInSessionMode: max clients reached" errors on Heroku.
   max: 3,

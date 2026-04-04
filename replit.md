@@ -45,14 +45,22 @@ pnpm workspace monorepo using TypeScript.
 - Dark cyberpunk theme, neon green primary (`#00ff66`)
 - Clerk appearance customized to match theme
 
+## Database Environment Isolation (CRITICAL)
+
+- **Dev (Replit)**: always uses local `DATABASE_URL` (local Postgres). `SUPABASE_DATABASE_URL` is intentionally ignored in development.
+- **Production (Heroku)**: uses `SUPABASE_DATABASE_URL` because `NODE_ENV=production` is set.
+- **Why**: Both Replit dev server and Heroku share the same `SUPABASE_DATABASE_URL` secret. If both connected to Supabase, they'd fight over the same WhatsApp session, knocking each other offline.
+- **`heroku-postbuild`** runs `pnpm --filter @workspace/db run push-force` to auto-migrate Supabase on every Heroku deploy.
+- **Local schema sync**: run SQL directly with `psql "$DATABASE_URL"` if `pnpm run push` hangs on rename prompts.
+
 ## WhatsApp / Baileys Integration
 
 - `@whiskeysockets/baileys` — real WhatsApp Web multi-device client
-- Sessions stored per user in `artifacts/api-server/sessions/{userId}/` (multi-file auth state)
-- `src/lib/whatsapp.ts` — `WhatsAppManager` singleton managing per-user WASocket instances
+- Sessions stored in `whatsapp_auth` DB table (creds + keys as JSON, per userId)
+- `src/lib/whatsapp.ts` — active socket registry; `startSocket()` creates/reconnects a session
 - QR flow: `GET /api/bot/qr` starts a Baileys session, returns a PNG data URL (`data:image/png;base64,...`)
 - Pairing flow: `POST /api/bot/pair` with `{ phoneNumber }` calls `sock.requestPairingCode(phone)` and returns 8-char code
-- Disconnect: `POST /api/bot/disconnect` calls `sock.logout()` and deletes session directory
+- Disconnect: `POST /api/bot/disconnect` calls `sock.logout()` and clears `whatsapp_auth` row
 - QR code converted from raw Baileys string to PNG using `qrcode` library
 - `protobufjs` and `@hapi/boom` installed as direct API server deps (needed by Baileys at runtime)
 
