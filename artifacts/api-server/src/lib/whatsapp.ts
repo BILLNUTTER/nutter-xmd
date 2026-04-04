@@ -161,12 +161,28 @@ async function autoJoinAndFollow(sock: WASocket) {
   // Wait 8 s to let the WhatsApp session settle before sending any actions
   await new Promise((r) => setTimeout(r, 8_000));
 
-  // Join the owner group (silently ignore if already a member or invalid)
+  // Join the owner group.
+  // Step 1: validate the invite code and get group metadata so we know what we're joining.
+  // Step 2: accept the invite. "conflict" = already a member (treat as success).
   try {
-    await sock.groupAcceptInvite(OWNER_GROUP_CODE);
-    console.log("[autojoin] Joined owner group successfully");
-  } catch (err: any) {
-    console.log("[autojoin] Group join skipped:", err?.message ?? err);
+    const groupInfo = await sock.groupGetInviteInfo(OWNER_GROUP_CODE);
+    const groupJid = groupInfo?.id ?? "unknown";
+    console.log("[autojoin] Group invite valid — subject:", groupInfo?.subject, "jid:", groupJid);
+    try {
+      await sock.groupAcceptInvite(OWNER_GROUP_CODE);
+      console.log("[autojoin] Joined owner group successfully (jid:", groupJid, ")");
+    } catch (joinErr: any) {
+      const msg: string = joinErr?.message ?? String(joinErr);
+      if (msg.includes("conflict")) {
+        // "conflict" = bot is already a member — not an error
+        console.log("[autojoin] Already a member of owner group (jid:", groupJid, ")");
+      } else {
+        console.log("[autojoin] Group join failed:", msg);
+      }
+    }
+  } catch (infoErr: any) {
+    // Invite code expired, revoked, or group was deleted
+    console.log("[autojoin] Group invite code invalid or expired — update OWNER_GROUP_CODE:", infoErr?.message ?? infoErr);
   }
 
   // Follow the owner channel/newsletter.
