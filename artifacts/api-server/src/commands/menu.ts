@@ -7,7 +7,7 @@ function getBanner(): Buffer | null {
   try {
     const assetPath = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "assets/menu-banner.png"
+      "assets/menu-banner.jpg"
     );
     return readFileSync(assetPath);
   } catch {
@@ -174,7 +174,7 @@ export async function menuCommand(ctx: CommandContext) {
     await sock.sendMessage(jid, {
       image: banner,
       caption: menu,
-      mimetype: "image/png",
+      mimetype: "image/jpeg",
     });
   } else {
     await sock.sendMessage(jid, { text: menu });

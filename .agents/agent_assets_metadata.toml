@@ -11,4 +11,10 @@ title = "Cyberpunk hacker dashboard UI"
 id = "8Wzu8vnxRXa1VGxWjEBBg"
 uri = "file://artifacts/api-server/src/assets/menu-banner.png"
 type = "image"
-title = "nutter-xmd cyberpunk banner with text"
+title = "nutter-xmd centered text cyberpunk banner"
+
+[[generated]]
+id = "fwkX4abe9XM7-KdKNY_pu"
+uri = "file://artifacts/api-server/src/assets/menu-banner-bg.png"
+type = "image"
+title = "nutter-xmd cyberpunk background no text"
