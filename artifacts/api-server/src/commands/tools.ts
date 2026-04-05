@@ -369,7 +369,13 @@ export async function vvCommand(ctx: CommandContext) {
 
 export async function vv2Command(ctx: CommandContext) {
   const ci = getQuotedContext(ctx.msg);
-  const vv = unwrapViewOnce(ci?.quotedMessage as any);
+
+  // 🔥 Normalize quoted message (handles ephemeral wrappers)
+  const quoted =
+    ci?.quotedMessage?.ephemeralMessage?.message ||
+    ci?.quotedMessage;
+
+  const vv = unwrapViewOnce(quoted as any);
 
   if (!vv || (!vv.image && !vv.video && !vv.audio)) {
     return ctx.sock.sendMessage(ctx.jid, {
@@ -382,8 +388,8 @@ export async function vv2Command(ctx: CommandContext) {
       key: {
         remoteJid: ctx.jid,
         fromMe: false,
-        id: ci!.stanzaId!,
-        participant: ci!.participant,
+        id: ci?.stanzaId!,
+        participant: ci?.participant,
       },
       message: vv.image
         ? { imageMessage: vv.image }
@@ -393,13 +399,28 @@ export async function vv2Command(ctx: CommandContext) {
     };
 
     const media = await downloadMediaMessage(fakeMsg as any, "buffer", {});
+
     const ownerJid = ctx.botJid.split(":")[0] + "@s.whatsapp.net";
-    const tag = `👁️ *View-Once (VV2)*\n\n📍 From: @${ctx.senderJid.split("@")[0]}\n💬 Chat: ${ctx.jid}\n\n_By *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡_`;
+
+    const tag = `👁️ *View-Once (VV2)*
+
+📍 From: @${ctx.senderJid.split("@")[0]}
+💬 Chat: ${ctx.jid}
+
+_By *𝑵𝑼𝑻𝑻𝑬𝑹-𝑿𝑴𝑫* ⚡_`;
 
     if (vv.image) {
-      await ctx.sock.sendMessage(ownerJid, { image: media as Buffer, caption: tag, mentions: [ctx.senderJid] });
+      await ctx.sock.sendMessage(ownerJid, {
+        image: media as Buffer,
+        caption: tag,
+        mentions: [ctx.senderJid],
+      });
     } else if (vv.video) {
-      await ctx.sock.sendMessage(ownerJid, { video: media as Buffer, caption: tag, mentions: [ctx.senderJid] });
+      await ctx.sock.sendMessage(ownerJid, {
+        video: media as Buffer,
+        caption: tag,
+        mentions: [ctx.senderJid],
+      });
     } else {
       await ctx.sock.sendMessage(ownerJid, {
         audio: media as Buffer,
@@ -407,10 +428,16 @@ export async function vv2Command(ctx: CommandContext) {
         ptt: (vv.audio?.ptt as boolean) ?? true,
       });
     }
-    await ctx.sock.sendMessage(ctx.jid, { text: "✅ View-once forwarded to owner DM." });
+
+    await ctx.sock.sendMessage(ctx.jid, {
+      text: "✅ View-once forwarded to owner DM.",
+    });
+
   } catch (e) {
     console.error("[vv2]", e);
-    await ctx.sock.sendMessage(ctx.jid, { text: "❌ Failed to retrieve view-once message." });
+    await ctx.sock.sendMessage(ctx.jid, {
+      text: "❌ Failed to retrieve view-once message.",
+    });
   }
 }
 
