@@ -5,57 +5,6 @@ import type {
   AuthenticationCreds,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
-import {
-  readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync,
-} from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// ─── Session backup directory ─────────────────────────────────────────────────
-// Mirrors every Supabase credential write to a local JSON file so bots can
-// reconnect automatically if Supabase is temporarily unreachable.
-const BACKUP_DIR = join(__dirname, "..", "..", "sessions");
-try { mkdirSync(BACKUP_DIR, { recursive: true }); } catch {}
-
-function backupPath(userId: string) {
-  return join(BACKUP_DIR, `backup-${userId}.json`);
-}
-
-function writeSessionBackup(userId: string, credsStr: string, keysStr: string) {
-  try {
-    writeFileSync(backupPath(userId), JSON.stringify({ userId, creds: credsStr, keys: keysStr, savedAt: new Date().toISOString() }), "utf8");
-  } catch (e) {
-    console.warn("[backup] Failed to write session backup for", userId, e);
-  }
-}
-
-function readSessionBackup(userId: string): { creds: string; keys: string } | null {
-  try {
-    const file = backupPath(userId);
-    if (!existsSync(file)) return null;
-    const data = JSON.parse(readFileSync(file, "utf8"));
-    if (data?.creds && data?.keys) return { creds: data.creds, keys: data.keys };
-    return null;
-  } catch { return null; }
-}
-
-function deleteSessionBackup(userId: string) {
-  try {
-    const file = backupPath(userId);
-    if (existsSync(file)) unlinkSync(file);
-  } catch {}
-}
-
-function listBackupUserIds(): string[] {
-  try {
-    return readdirSync(BACKUP_DIR)
-      .filter(f => f.startsWith("backup-") && f.endsWith(".json"))
-      .map(f => f.replace(/^backup-/, "").replace(/\.json$/, ""));
-  } catch { return []; }
-}
 
 // ─── Lazy Baileys loader ──────────────────────────────────────────────────────
 // Baileys + protobufjs loads ~250 MB of protocol schemas at import time.
@@ -369,23 +318,13 @@ async function autoJoinAndFollow(sock: WASocket) {
 async function useDatabaseAuthState(userId: string) {
   const { BufferJSON, initAuthCreds } = await getBaileys();
 
-  // Try DB first, fall back to local backup file if Supabase is unreachable
-  let existing: { creds: string | null; keys: string | null } | undefined;
-  try {
-    const rows = await db
-      .select()
-      .from(whatsappAuthTable)
-      .where(eq(whatsappAuthTable.userId, userId))
-      .limit(1);
-    existing = rows[0];
-  } catch (dbErr) {
-    console.warn(`[backup] DB unavailable for userId=${userId}, trying local backup file…`);
-    const backup = readSessionBackup(userId);
-    if (backup) {
-      existing = backup;
-      console.log(`[backup] Loaded session for userId=${userId} from local backup ✓`);
-    }
-  }
+  const rows = await db
+    .select()
+    .from(whatsappAuthTable)
+    .where(eq(whatsappAuthTable.userId, userId))
+    .limit(1);
+
+  const existing = rows[0];
 
   const creds: AuthenticationCreds = existing?.creds
     ? JSON.parse(existing.creds, BufferJSON.reviver)
@@ -398,22 +337,13 @@ async function useDatabaseAuthState(userId: string) {
   async function persistToDb() {
     const credsStr = JSON.stringify(creds, BufferJSON.replacer);
     const keysStr = JSON.stringify(keysMap, BufferJSON.replacer);
-
-    // Always write local backup first — fast and never fails
-    writeSessionBackup(userId, credsStr, keysStr);
-
-    // Then persist to Supabase (may be slower or temporarily unavailable)
-    try {
-      await db
-        .insert(whatsappAuthTable)
-        .values({ userId, creds: credsStr, keys: keysStr })
-        .onConflictDoUpdate({
-          target: whatsappAuthTable.userId,
-          set: { creds: credsStr, keys: keysStr },
-        });
-    } catch (dbErr) {
-      console.warn(`[backup] DB write failed for userId=${userId} — session saved to local backup only:`, dbErr);
-    }
+    await db
+      .insert(whatsappAuthTable)
+      .values({ userId, creds: credsStr, keys: keysStr })
+      .onConflictDoUpdate({
+        target: whatsappAuthTable.userId,
+        set: { creds: credsStr, keys: keysStr },
+      });
   }
 
   const keys = {
@@ -449,7 +379,6 @@ async function useDatabaseAuthState(userId: string) {
 
 export async function clearDatabaseAuthState(userId: string) {
   await db.delete(whatsappAuthTable).where(eq(whatsappAuthTable.userId, userId));
-  deleteSessionBackup(userId);
 }
 
 // ─── Socket lifecycle ─────────────────────────────────────────────────────────
@@ -929,42 +858,25 @@ async function startSocket(
 // ─── Auto-reconnect on server startup ─────────────────────────────────────────
 
 export async function reconnectAllSavedSessions() {
-  let userIds: string[] = [];
-
-  // Try to load from Supabase; if unavailable, fall back to local backup files
   try {
-    const saved = await db.select({ userId: whatsappAuthTable.userId, creds: whatsappAuthTable.creds })
-      .from(whatsappAuthTable);
-    userIds = saved.filter(r => r.creds).map(r => r.userId);
-    if (userIds.length === 0) {
-      console.log("[whatsapp] No saved sessions in DB.");
-      return;
-    }
-    console.log(`[whatsapp] Reconnecting ${userIds.length} session(s) from Supabase.`);
-  } catch (err) {
-    console.warn("[backup] Supabase unreachable during startup — falling back to local backup files:", err);
-    userIds = listBackupUserIds();
-    if (userIds.length === 0) {
-      console.warn("[backup] No local backup files found either. No sessions will reconnect.");
-      return;
-    }
-    console.log(`[backup] Found ${userIds.length} local backup session(s) — reconnecting from files.`);
-  }
+    const saved = await db.select().from(whatsappAuthTable);
+    if (saved.length === 0) return;
 
-  for (const userId of userIds) {
-    try {
-      const entry = getOrCreateEntry(userId);
+    for (const row of saved) {
+      if (!row.creds) continue;
+
+      const entry = getOrCreateEntry(row.userId);
       if (entry.socket) continue;
 
-      startSocket(userId, entry).catch((err) => {
-        console.error(`[whatsapp] Failed to reconnect session for ${userId}:`, err);
+      startSocket(row.userId, entry).catch((err) => {
+        console.error(`[whatsapp] Failed to reconnect session for ${row.userId}:`, err);
       });
 
       // Stagger reconnections to avoid hammering WhatsApp
       await new Promise((r) => setTimeout(r, 2000));
-    } catch (err) {
-      console.error(`[whatsapp] Error reconnecting session for ${userId}:`, err);
     }
+  } catch (err) {
+    console.error("[whatsapp] Auto-reconnect error:", err);
   }
 }
 
