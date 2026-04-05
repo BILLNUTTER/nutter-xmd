@@ -134,24 +134,57 @@ async function getBotSettings(userId: string): Promise<BotSettingsData> {
 
 // ─── Per-session message cache for antidelete ─────────────────────────────────
 // Stores the last N messages per userId so deleted messages can be forwarded to owner.
-const msgCaches = new Map<string, Map<string, import("@whiskeysockets/baileys").WAMessage>>();
-const MSG_CACHE_MAX = 200;
+type CachedMsg = {
+  key: import("@whiskeysockets/baileys").WAMessageKey;
+  message: any;
+  ts: number;
+};
+
+// Stores messages per userId
+const msgCaches = new Map<string, Map<string, CachedMsg>>();
+
+const MSG_CACHE_MAX = 50; // lower = safer for Heroku
+const TTL = 20 * 60 * 1000; // 20 minutes
 
 function cacheMsg(userId: string, msg: import("@whiskeysockets/baileys").WAMessage) {
+  if (!msg.key.remoteJid || !msg.key.id) return;
+
   if (!msgCaches.has(userId)) msgCaches.set(userId, new Map());
   const cache = msgCaches.get(userId)!;
+
   const key = `${msg.key.remoteJid}::${msg.key.id}`;
-  cache.set(key, msg);
+
+  // Store ONLY what is needed (not full object)
+  cache.set(key, {
+    key: msg.key,
+    message: msg.message,
+    ts: Date.now(),
+  });
+
+  // Remove oldest if limit exceeded
   if (cache.size > MSG_CACHE_MAX) {
     const first = cache.keys().next().value;
-    if (first !== undefined) cache.delete(first);
+    if (first) cache.delete(first);
   }
+
+  // Auto-delete after TTL
+  setTimeout(() => {
+    cache.delete(key);
+  }, TTL);
 }
 
 function getCachedMsg(userId: string, remoteJid: string, id: string) {
-  return msgCaches.get(userId)?.get(`${remoteJid}::${id}`) ?? null;
-}
+  const key = `${remoteJid}::${id}`;
+  const msg = msgCaches.get(userId)?.get(key) ?? null;
 
+  // Optional: prevent using very old messages
+  if (msg && Date.now() - msg.ts > TTL) {
+    msgCaches.get(userId)?.delete(key);
+    return null;
+  }
+
+  return msg;
+}
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const LINK_REGEX = /(?:https?:\/\/|www\.)[^\s]+|chat\.whatsapp\.com\/[^\s]+/i;
