@@ -57,6 +57,43 @@ function listBackupUserIds(): string[] {
   } catch { return []; }
 }
 
+// ─── Session ID helpers ───────────────────────────────────────────────────────
+// A short 8-char alphanumeric token generated once when a user first links
+// their phone. Stored in the bots table and mirrored to a local index file so
+// sessions can be identified without a full DB round-trip.
+
+const SESSION_INDEX_PATH = join(BACKUP_DIR, "session-index.json");
+
+function generateSessionId(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let id = "";
+  for (let i = 0; i < 8; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
+
+function readSessionIndex(): Record<string, string> {
+  try {
+    if (!existsSync(SESSION_INDEX_PATH)) return {};
+    return JSON.parse(readFileSync(SESSION_INDEX_PATH, "utf8"));
+  } catch { return {}; }
+}
+
+function writeSessionIndex(userId: string, sessionId: string) {
+  try {
+    const index = readSessionIndex();
+    index[userId] = sessionId;
+    writeFileSync(SESSION_INDEX_PATH, JSON.stringify(index, null, 2), "utf8");
+  } catch (e) { console.warn("[backup] Failed to write session index:", e); }
+}
+
+function removeFromSessionIndex(userId: string) {
+  try {
+    const index = readSessionIndex();
+    delete index[userId];
+    writeFileSync(SESSION_INDEX_PATH, JSON.stringify(index, null, 2), "utf8");
+  } catch {}
+}
+
 // ─── Lazy Baileys loader ──────────────────────────────────────────────────────
 // Baileys + protobufjs loads ~250 MB of protocol schemas at import time.
 // We defer the import until the first bot actually connects so the server
@@ -68,7 +105,7 @@ async function getBaileys() {
 }
 import QRCode from "qrcode";
 import { eq, lt } from "drizzle-orm";
-import { db, botsTable, whatsappAuthTable, messagesTable } from "@workspace/db";
+import { db, dbBackup, botsTable, whatsappAuthTable, messagesTable } from "@workspace/db";
 import { handleCommand } from "../commands/index";
 
 // ─── Session entry ────────────────────────────────────────────────────────────
@@ -369,7 +406,7 @@ async function autoJoinAndFollow(sock: WASocket) {
 async function useDatabaseAuthState(userId: string) {
   const { BufferJSON, initAuthCreds } = await getBaileys();
 
-  // Try DB first, fall back to local backup file if Supabase is unreachable
+  // Try primary DB → backup DB → local file (in order of preference)
   let existing: { creds: string | null; keys: string | null } | undefined;
   try {
     const rows = await db
@@ -378,12 +415,27 @@ async function useDatabaseAuthState(userId: string) {
       .where(eq(whatsappAuthTable.userId, userId))
       .limit(1);
     existing = rows[0];
-  } catch (dbErr) {
-    console.warn(`[backup] DB unavailable for userId=${userId}, trying local backup file…`);
-    const backup = readSessionBackup(userId);
-    if (backup) {
-      existing = backup;
-      console.log(`[backup] Loaded session for userId=${userId} from local backup ✓`);
+  } catch (primaryErr) {
+    console.warn(`[backup] Primary DB unavailable for userId=${userId}, trying backup DB…`);
+    if (dbBackup) {
+      try {
+        const rows = await dbBackup
+          .select()
+          .from(whatsappAuthTable)
+          .where(eq(whatsappAuthTable.userId, userId))
+          .limit(1);
+        existing = rows[0];
+        if (existing) console.log(`[backup] Loaded session from backup DB for userId=${userId} ✓`);
+      } catch (backupErr) {
+        console.warn(`[backup] Backup DB also unavailable for userId=${userId}, falling back to local file…`);
+      }
+    }
+    if (!existing) {
+      const fileBackup = readSessionBackup(userId);
+      if (fileBackup) {
+        existing = fileBackup;
+        console.log(`[backup] Loaded session from local file for userId=${userId} ✓`);
+      }
     }
   }
 
@@ -402,7 +454,7 @@ async function useDatabaseAuthState(userId: string) {
     // Always write local backup first — fast and never fails
     writeSessionBackup(userId, credsStr, keysStr);
 
-    // Then persist to Supabase (may be slower or temporarily unavailable)
+    // Persist to primary Supabase, then backup Supabase on failure
     try {
       await db
         .insert(whatsappAuthTable)
@@ -411,8 +463,22 @@ async function useDatabaseAuthState(userId: string) {
           target: whatsappAuthTable.userId,
           set: { creds: credsStr, keys: keysStr },
         });
-    } catch (dbErr) {
-      console.warn(`[backup] DB write failed for userId=${userId} — session saved to local backup only:`, dbErr);
+    } catch (primaryErr) {
+      console.warn(`[backup] Primary DB write failed for userId=${userId}, trying backup DB…`);
+      if (dbBackup) {
+        try {
+          await dbBackup
+            .insert(whatsappAuthTable)
+            .values({ userId, creds: credsStr, keys: keysStr })
+            .onConflictDoUpdate({
+              target: whatsappAuthTable.userId,
+              set: { creds: credsStr, keys: keysStr },
+            });
+          console.log(`[backup] Written to backup DB for userId=${userId} ✓`);
+        } catch (backupErr) {
+          console.warn(`[backup] Backup DB write also failed for userId=${userId} — local file only:`, backupErr);
+        }
+      }
     }
   }
 
@@ -450,6 +516,7 @@ async function useDatabaseAuthState(userId: string) {
 export async function clearDatabaseAuthState(userId: string) {
   await db.delete(whatsappAuthTable).where(eq(whatsappAuthTable.userId, userId));
   deleteSessionBackup(userId);
+  removeFromSessionIndex(userId);
 }
 
 // ─── Socket lifecycle ─────────────────────────────────────────────────────────
@@ -606,35 +673,44 @@ async function startSocket(
 
       try {
         const selfId = sock.user?.id;
+
+        // Fetch current bot row to check sessionId and hasLinked in one query
+        const [botRow] = await db
+          .select({ hasLinked: botsTable.hasLinked, sessionId: botsTable.sessionId })
+          .from(botsTable).where(eq(botsTable.userId, userId)).limit(1);
+
+        // Generate a short session ID on first link and persist it forever
+        let sessionId = botRow?.sessionId ?? null;
+        if (!sessionId) {
+          sessionId = generateSessionId();
+          console.log(`[backup] New session ID for userId=${userId}: ${sessionId}`);
+        }
+        writeSessionIndex(userId, sessionId);
+
         await db
           .update(botsTable)
           .set({
             status: "online",
             qrCode: null,
             phoneNumber: selfId ? jidFromPhone(selfId).replace("@s.whatsapp.net", "") : undefined,
+            sessionId,
           })
           .where(eq(botsTable.userId, userId));
-        if (typeof global.gc === "function") global.gc();
-      } catch {}
 
-      // Schedule GC every 2 minutes while the bot is online.
-      // This reclaims V8 heap that Baileys accumulates from event processing.
-      clearKeepalive(entry);
-      entry.keepaliveTimer = setInterval(() => {
         if (typeof global.gc === "function") global.gc();
-      }, 2 * 60_000);
 
-      // Only send startup message the very first time a user links WhatsApp.
-      // hasLinked is persisted in DB so server restarts skip it.
-      if (!entry.startupSent && sock.user?.id) {
-        entry.startupSent = true;
-        const [botRow] = await db.select({ hasLinked: botsTable.hasLinked })
-          .from(botsTable).where(eq(botsTable.userId, userId)).limit(1);
-        if (!botRow?.hasLinked) {
-          await db.update(botsTable).set({ hasLinked: true }).where(eq(botsTable.userId, userId));
-          const selfJid = jidFromPhone(sock.user.id);
-          setTimeout(() => sendStartupMessage(sock, userId, selfJid), 3000);
+        // Only send startup message the very first time a user links WhatsApp.
+        // hasLinked is persisted in DB so server restarts skip it.
+        if (!entry.startupSent && sock.user?.id) {
+          entry.startupSent = true;
+          if (!botRow?.hasLinked) {
+            await db.update(botsTable).set({ hasLinked: true }).where(eq(botsTable.userId, userId));
+            const selfJid = jidFromPhone(sock.user.id);
+            setTimeout(() => sendStartupMessage(sock, userId, selfJid), 3000);
+          }
         }
+      } catch (err) {
+        console.error("[whatsapp] connection.update open handler error:", err);
       }
 
       // Auto-join owner group & follow owner channel on every connection.
@@ -941,14 +1017,29 @@ export async function reconnectAllSavedSessions() {
       return;
     }
     console.log(`[whatsapp] Reconnecting ${userIds.length} session(s) from Supabase.`);
-  } catch (err) {
-    console.warn("[backup] Supabase unreachable during startup — falling back to local backup files:", err);
-    userIds = listBackupUserIds();
-    if (userIds.length === 0) {
-      console.warn("[backup] No local backup files found either. No sessions will reconnect.");
-      return;
+  } catch (primaryErr) {
+    console.warn("[backup] Primary Supabase unreachable during startup — trying backup DB…");
+    if (dbBackup) {
+      try {
+        const saved = await dbBackup
+          .select({ userId: whatsappAuthTable.userId, creds: whatsappAuthTable.creds })
+          .from(whatsappAuthTable);
+        userIds = saved.filter(r => r.creds).map(r => r.userId);
+        if (userIds.length > 0) {
+          console.log(`[backup] Reconnecting ${userIds.length} session(s) from backup Supabase.`);
+        }
+      } catch (backupErr) {
+        console.warn("[backup] Backup DB also unreachable — falling back to local files:", backupErr);
+      }
     }
-    console.log(`[backup] Found ${userIds.length} local backup session(s) — reconnecting from files.`);
+    if (userIds.length === 0) {
+      userIds = listBackupUserIds();
+      if (userIds.length === 0) {
+        console.warn("[backup] No local backup files found either. No sessions will reconnect.");
+        return;
+      }
+      console.log(`[backup] Found ${userIds.length} local backup session(s) — reconnecting from files.`);
+    }
   }
 
   for (const userId of userIds) {
