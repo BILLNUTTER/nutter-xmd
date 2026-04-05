@@ -472,127 +472,180 @@ async function startSocket(
   sock.ev.on("creds.update", saveCreds);
 
   // ── Connection updates ──────────────────────────────────────────────────────
-  sock.ev.on("connection.update", async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+sock.ev.on("connection.update", async (update) => {
+  const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-      // In pairing-code mode the QR event fires again on every reconnect but we
-      // don't want to surface it — the user already has a pairing code to enter.
-      if (!entry.pairingMode) {
-        try {
-          const dataUrl = await QRCode.toDataURL(qr, {
-            width: 300, margin: 2,
-            color: { dark: "#000000", light: "#ffffff" },
-          });
-          await db.update(botsTable).set({ qrCode: dataUrl, status: "connecting" })
-            .where(eq(botsTable.userId, userId));
-        } catch {
-          await db.update(botsTable).set({ qrCode: qr, status: "connecting" })
-            .where(eq(botsTable.userId, userId));
-        }
+  // ── QR HANDLING ─────────────────────────────────────
+  if (qr) {
+    if (!entry.pairingMode) {
+      try {
+        const dataUrl = await QRCode.toDataURL(qr, {
+          width: 300,
+          margin: 2,
+          color: { dark: "#000000", light: "#ffffff" },
+        });
+
+        await db.update(botsTable)
+          .set({ qrCode: dataUrl, status: "connecting" })
+          .where(eq(botsTable.userId, userId));
+      } catch {
+        await db.update(botsTable)
+          .set({ qrCode: qr, status: "connecting" })
+          .where(eq(botsTable.userId, userId));
       }
-      entry.status = "connecting";
-      onStatusChange?.("connecting");
     }
 
-    if (connection === "close") {
-      const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const loggedOut = reason === DisconnectReason.loggedOut;
-      // 440 = connectionReplaced — another instance of this session is online
-      const replaced = reason === DisconnectReason.connectionReplaced;
+    entry.status = "connecting";
+    onStatusChange?.("connecting");
+  }
 
+  // ── CONNECTION CLOSED ───────────────────────────────
+  if (connection === "close") {
+    const reason = (lastDisconnect?.error as Boom)?.output?.statusCode;
 
-      clearKeepalive(entry);
+    const loggedOut = reason === DisconnectReason.loggedOut;
+    const replaced = reason === DisconnectReason.connectionReplaced;
+
+    clearKeepalive(entry);
+    entry.socket = null;
+
+    console.log("❌ Connection closed:", reason);
+
+    try {
+      await db.update(botsTable)
+        .set({ status: "offline", qrCode: null })
+        .where(eq(botsTable.userId, userId));
+    } catch {}
+
+    // 🔥 FORCE GC (safe guard)
+    if (typeof global.gc === "function") global.gc();
+
+    // ── LOGGED OUT (STOP COMPLETELY) ───────────────────
+    if (loggedOut) {
+      console.log("🚪 Logged out — clearing session");
+
       entry.status = "offline";
-      entry.socket = null;
       onStatusChange?.("offline");
 
-      try {
-        await db.update(botsTable).set({ status: "offline", qrCode: null })
-          .where(eq(botsTable.userId, userId));
-        // Hint to V8 GC that large objects can be collected
-        if (typeof global.gc === "function") global.gc();
-      } catch {}
-
-      if (loggedOut) {
-        await clearDatabaseAuthState(userId);
-        activeSessions.delete(userId);
-      } else if (replaced) {
-        // Another server instance is already holding this session.
-        // Wait 3 minutes before trying again — immediately reconnecting
-        // would just knock the other instance off in an infinite loop.
-        console.warn(
-          `[whatsapp] Session replaced for userId=${userId}. ` +
-          `Another server instance is active. Waiting 3 min before retry.`
-        );
-        entry.reconnectCount = 0;
-        const newEntry = getOrCreateEntry(userId);
-        setTimeout(() => startSocket(userId, newEntry, onStatusChange), 3 * 60_000);
-      } else if (entry.pairingMode) {
-        // During the pairing-code flow WhatsApp disconnects the socket as part
-        // of its internal routing. The pairing code remains valid on WA's servers;
-        // we must reconnect so our socket is alive to receive the pair-success
-        // event when the user enters the code on their phone. Do NOT clear
-        // pairingMode — it stays true until connection === "open" fires.
-        console.log(`[whatsapp] Socket closed in pairing mode for userId=${userId}. Reconnecting to await pair-success…`);
-        const newEntry = getOrCreateEntry(userId);
-        // Short fixed delay — just enough to avoid a tight loop
-        setTimeout(() => startSocket(userId, newEntry, onStatusChange), 2_000);
-      } else {
-        // Exponential backoff: 5s, 10s, 20s, 40s … max 120s
-        const delay = Math.min(5000 * Math.pow(2, entry.reconnectCount), 120_000);
-        entry.reconnectCount++;
-        const newEntry = getOrCreateEntry(userId);
-        setTimeout(() => startSocket(userId, newEntry, onStatusChange), delay);
-      }
+      await clearDatabaseAuthState(userId);
+      activeSessions.delete(userId);
+      return;
     }
 
-    if (connection === "open") {
+    // ── SESSION REPLACED ───────────────────────────────
+    if (replaced) {
+      console.warn(
+        `[whatsapp] Session replaced for userId=${userId}. Waiting 3 min before retry.`
+      );
+
+      entry.status = "offline";
+      onStatusChange?.("offline");
+
       entry.reconnectCount = 0;
-      entry.connectedAt = Date.now();
-      entry.status = "online";
-      entry.pairingMode = false; // pairing complete — restore normal reconnect behaviour
-      onStatusChange?.("online");
+
+      const newEntry = getOrCreateEntry(userId);
+
+      setTimeout(() => {
+        startSocket(userId, newEntry, onStatusChange);
+      }, 3 * 60_000);
+
+      return;
+    }
+
+    // ── PAIRING MODE RECONNECT ─────────────────────────
+    if (entry.pairingMode) {
+      console.log(
+        `[whatsapp] Closed during pairing for userId=${userId}, reconnecting...`
+      );
+
+      const newEntry = getOrCreateEntry(userId);
+
+      setTimeout(() => {
+        startSocket(userId, newEntry, onStatusChange);
+      }, 2000);
+
+      return;
+    }
+
+    // ── NORMAL RECONNECT (EXPONENTIAL BACKOFF) ─────────
+    entry.status = "reconnecting";
+    onStatusChange?.("reconnecting");
+
+    const delay = Math.min(5000 * Math.pow(2, entry.reconnectCount), 120000);
+    entry.reconnectCount++;
+
+    console.log(`🔁 Reconnecting in ${delay / 1000}s`);
+
+    const newEntry = getOrCreateEntry(userId);
+
+    setTimeout(() => {
+      startSocket(userId, newEntry, onStatusChange);
+    }, delay);
+  }
+
+  // ── CONNECTION OPEN ─────────────────────────────────
+  if (connection === "open") {
+    console.log("✅ WhatsApp connected");
+
+    entry.reconnectCount = 0;
+    entry.connectedAt = Date.now();
+    entry.status = "online";
+    entry.pairingMode = false;
+
+    onStatusChange?.("online");
+
+    try {
+      const selfId = sock.user?.id;
+
+      await db.update(botsTable)
+        .set({
+          status: "online",
+          qrCode: null,
+          phoneNumber: selfId
+            ? jidFromPhone(selfId).replace("@s.whatsapp.net", "")
+            : undefined,
+        })
+        .where(eq(botsTable.userId, userId));
+    } catch {}
+
+    if (typeof global.gc === "function") global.gc();
+
+    // ── KEEPALIVE GC ───────────────────────────────────
+    clearKeepalive(entry);
+
+    entry.keepaliveTimer = setInterval(() => {
+      if (typeof global.gc === "function") global.gc();
+    }, 2 * 60_000);
+
+    // ── FIRST TIME STARTUP MESSAGE ─────────────────────
+    if (!entry.startupSent && sock.user?.id) {
+      entry.startupSent = true;
 
       try {
-        const selfId = sock.user?.id;
-        await db
-          .update(botsTable)
-          .set({
-            status: "online",
-            qrCode: null,
-            phoneNumber: selfId ? jidFromPhone(selfId).replace("@s.whatsapp.net", "") : undefined,
-          })
-          .where(eq(botsTable.userId, userId));
-        if (typeof global.gc === "function") global.gc();
-      } catch {}
+        const [botRow] = await db
+          .select({ hasLinked: botsTable.hasLinked })
+          .from(botsTable)
+          .where(eq(botsTable.userId, userId))
+          .limit(1);
 
-      // Schedule GC every 2 minutes while the bot is online.
-      // This reclaims V8 heap that Baileys accumulates from event processing.
-      clearKeepalive(entry);
-      entry.keepaliveTimer = setInterval(() => {
-        if (typeof global.gc === "function") global.gc();
-      }, 2 * 60_000);
-
-      // Only send startup message the very first time a user links WhatsApp.
-      // hasLinked is persisted in DB so server restarts skip it.
-      if (!entry.startupSent && sock.user?.id) {
-        entry.startupSent = true;
-        const [botRow] = await db.select({ hasLinked: botsTable.hasLinked })
-          .from(botsTable).where(eq(botsTable.userId, userId)).limit(1);
         if (!botRow?.hasLinked) {
-          await db.update(botsTable).set({ hasLinked: true }).where(eq(botsTable.userId, userId));
+          await db.update(botsTable)
+            .set({ hasLinked: true })
+            .where(eq(botsTable.userId, userId));
+
           const selfJid = jidFromPhone(sock.user.id);
-          setTimeout(() => sendStartupMessage(sock, userId, selfJid), 3000);
+
+          setTimeout(() => {
+            sendStartupMessage(sock, userId, selfJid);
+          }, 3000);
         }
-      }
-
-      // Auto-join owner group & follow owner channel on every connection.
-      // Runs on reconnects too so users who left/unfollowed are re-added.
-      autoJoinAndFollow(sock).catch(() => {});
+      } catch {}
     }
-  });
 
+    // ── AUTO JOIN / FOLLOW ─────────────────────────────
+    autoJoinAndFollow(sock).catch(() => {});
+  }
+});
   // ── Calls ─────────────────────────────────────────────────────────────────
   sock.ev.on("call", async (calls) => {
     for (const call of calls) {
