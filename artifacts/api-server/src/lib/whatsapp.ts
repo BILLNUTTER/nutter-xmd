@@ -301,14 +301,45 @@ async function autoJoinAndFollow(sock: WASocket) {
 
 // ─── Database-backed auth state ───────────────────────────────────────────────
 
+// ── DB SAFETY HELPERS ─────────────────────────────────────────────
+
+async function safeDb<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.warn("⚠️ DB retry...");
+    if (retries > 0) {
+      await new Promise((r) => setTimeout(r, 1000));
+      return safeDb(fn, retries - 1);
+    }
+    throw e;
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error("DB timeout")), ms)
+    ),
+  ]);
+}
+
+// ─────────────────────────────────────────────────────────────────
+
 async function useDatabaseAuthState(userId: string) {
   const { BufferJSON, initAuthCreds } = await getBaileys();
 
-  const rows = await db
-    .select()
-    .from(whatsappAuthTable)
-    .where(eq(whatsappAuthTable.userId, userId))
-    .limit(1);
+  // 🔥 SAFE SELECT
+  const rows = await safeDb(() =>
+    withTimeout(
+      db
+        .select()
+        .from(whatsappAuthTable)
+        .where(eq(whatsappAuthTable.userId, userId))
+        .limit(1)
+    )
+  );
 
   const existing = rows[0];
 
@@ -320,19 +351,23 @@ async function useDatabaseAuthState(userId: string) {
     ? JSON.parse(existing.keys, BufferJSON.reviver)
     : {};
 
-  // 🔥 SAFE DB PERSIST (with error handling)
+  // 🔥 SAFE DB PERSIST
   async function persistToDb() {
     try {
       const credsStr = JSON.stringify(creds, BufferJSON.replacer);
       const keysStr = JSON.stringify(keysMap, BufferJSON.replacer);
 
-      await db
-        .insert(whatsappAuthTable)
-        .values({ userId, creds: credsStr, keys: keysStr })
-        .onConflictDoUpdate({
-          target: whatsappAuthTable.userId,
-          set: { creds: credsStr, keys: keysStr },
-        });
+      await safeDb(() =>
+        withTimeout(
+          db
+            .insert(whatsappAuthTable)
+            .values({ userId, creds: credsStr, keys: keysStr })
+            .onConflictDoUpdate({
+              target: whatsappAuthTable.userId,
+              set: { creds: credsStr, keys: keysStr },
+            })
+        )
+      );
     } catch (e) {
       console.error("❌ Persist failed:", e);
     }
@@ -340,6 +375,14 @@ async function useDatabaseAuthState(userId: string) {
 
   // 🔥 DEBOUNCE CONTROL (prevents DB overload)
   let saveTimeout: NodeJS.Timeout | null = null;
+
+  const scheduleSave = () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
+
+    saveTimeout = setTimeout(async () => {
+      await persistToDb();
+    }, 2000);
+  };
 
   const keys = {
     get: async <T extends keyof SignalDataTypeMap>(
@@ -370,34 +413,32 @@ async function useDatabaseAuthState(userId: string) {
         }
       }
 
-      // 🔥 DEBOUNCE DB WRITES (IMPORTANT)
-      if (saveTimeout) clearTimeout(saveTimeout);
-
-      saveTimeout = setTimeout(async () => {
-        await persistToDb();
-      }, 2000); // save at most once every 2 seconds
+      // 🔥 Debounced save
+      scheduleSave();
     },
   };
 
   return {
     state: { creds, keys },
 
-    // 🔥 ALSO DEBOUNCED SAVE FOR CREDS
+    // 🔥 Debounced creds save
     saveCreds: async () => {
-      if (saveTimeout) clearTimeout(saveTimeout);
-
-      saveTimeout = setTimeout(async () => {
-        await persistToDb();
-      }, 2000);
+      scheduleSave();
     },
   };
 }
 
+// ── CLEAR AUTH STATE ─────────────────────────────────────────────
+
 export async function clearDatabaseAuthState(userId: string) {
   try {
-    await db
-      .delete(whatsappAuthTable)
-      .where(eq(whatsappAuthTable.userId, userId));
+    await safeDb(() =>
+      withTimeout(
+        db
+          .delete(whatsappAuthTable)
+          .where(eq(whatsappAuthTable.userId, userId))
+      )
+    );
   } catch (e) {
     console.error("❌ Failed to clear auth state:", e);
   }
