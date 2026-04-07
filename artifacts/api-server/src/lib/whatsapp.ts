@@ -1083,19 +1083,52 @@ export async function reconnectAllSavedSessions() {
 export async function requestQRCode(userId: string) {
   const entry = getOrCreateEntry(userId);
 
-  if (entry.status === "online") return { qrCode: null, status: "online" as const };
-
-  if (!entry.socket) {
-    await startSocket(userId, entry);
-    await new Promise((r) => setTimeout(r, 3000));
+  // ✅ already connected
+  if (entry.status === "online") {
+    return { qrCode: null, status: "online" as const };
   }
 
-  // Read QR from DB — it's never stored in memory
-  const [row] = await db.select({ qrCode: botsTable.qrCode })
-    .from(botsTable).where(eq(botsTable.userId, userId)).limit(1);
-  const qrCode = row?.qrCode ?? null;
+  // 🔥 prevent duplicate socket creation
+  if (!entry.socket && !entry.starting) {
+    entry.starting = true;
 
-  return { qrCode, status: qrCode ? ("connecting" as const) : entry.status };
+    try {
+      await startSocket(userId, entry);
+    } catch (e) {
+      console.error("❌ Socket start failed:", e);
+    } finally {
+      entry.starting = false;
+    }
+  }
+
+  // ✅ NO DELAY (removed memory leak)
+  // ❌ removed: await new Promise(...)
+
+  // 🔥 Only fetch QR if not already cached
+  let qrCode = entry.qr ?? null;
+
+  if (!qrCode) {
+    try {
+      const [row] = await safeDb(() =>
+        withTimeout(
+          db
+            .select({ qrCode: botsTable.qrCode })
+            .from(botsTable)
+            .where(eq(botsTable.userId, userId))
+            .limit(1)
+        )
+      );
+
+      qrCode = row?.qrCode ?? null;
+    } catch (e) {
+      console.error("❌ QR fetch failed:", e);
+    }
+  }
+
+  return {
+    qrCode,
+    status: qrCode ? ("connecting" as const) : entry.status,
+  };
 }
 
 export async function requestPairingCode(userId: string, phoneNumber: string) {
