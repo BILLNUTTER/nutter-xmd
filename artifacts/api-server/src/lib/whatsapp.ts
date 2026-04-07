@@ -327,31 +327,54 @@ async function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
 
 // ─────────────────────────────────────────────────────────────────
 
-async function useDatabaseAuthState(userId: string) {
+// ── DATABASE AUTH STATE ─────────────────────────────────────────
+
+export async function useDatabaseAuthState(userId: string) {
   const { BufferJSON, initAuthCreds } = await getBaileys();
 
-  // 🔥 SAFE SELECT
-  const rows = await safeDb(() =>
-    withTimeout(
-      db
-        .select()
-        .from(whatsappAuthTable)
-        .where(eq(whatsappAuthTable.userId, userId))
-        .limit(1)
-    )
-  );
+  let rows: any[] = [];
 
-  const existing = rows[0];
+  // 🔥 SAFE DB READ
+  try {
+    rows = await safeDb(() =>
+      withTimeout(
+        db
+          .select()
+          .from(whatsappAuthTable)
+          .where(eq(whatsappAuthTable.userId, userId))
+          .limit(1)
+      )
+    );
+  } catch (e) {
+    console.error("❌ DB read failed:", e);
+  }
 
-  const creds: AuthenticationCreds = existing?.creds
-    ? JSON.parse(existing.creds, BufferJSON.reviver)
-    : initAuthCreds();
+  const existing = rows?.[0];
 
-  const keysMap: Record<string, any> = existing?.keys
-    ? JSON.parse(existing.keys, BufferJSON.reviver)
-    : {};
+  // 🔥 SAFE CREDS PARSE
+  let creds: AuthenticationCreds;
+  try {
+    creds = existing?.creds
+      ? JSON.parse(existing.creds, BufferJSON.reviver)
+      : initAuthCreds();
+  } catch (e) {
+    console.error("❌ Corrupted creds, resetting:", e);
+    creds = initAuthCreds();
+  }
 
-  // 🔥 SAFE DB PERSIST
+  // 🔥 SAFE KEYS PARSE
+  let keysMap: Record<string, any> = {};
+  try {
+    keysMap = existing?.keys
+      ? JSON.parse(existing.keys, BufferJSON.reviver)
+      : {};
+  } catch (e) {
+    console.error("❌ Corrupted keys, resetting:", e);
+    keysMap = {};
+  }
+
+  // ── PERSIST TO DB ─────────────────────────────────────────────
+
   async function persistToDb() {
     try {
       const credsStr = JSON.stringify(creds, BufferJSON.replacer);
@@ -373,16 +396,21 @@ async function useDatabaseAuthState(userId: string) {
     }
   }
 
-  // 🔥 DEBOUNCE CONTROL (prevents DB overload)
+  // ── DEBOUNCE SAVE (PREVENT SPAM + CRASH) ──────────────────────
+
   let saveTimeout: NodeJS.Timeout | null = null;
 
   const scheduleSave = () => {
     if (saveTimeout) clearTimeout(saveTimeout);
 
-    saveTimeout = setTimeout(async () => {
-      await persistToDb();
+    saveTimeout = setTimeout(() => {
+      persistToDb().catch((err) =>
+        console.error("❌ Debounced save error:", err)
+      );
     }, 2000);
   };
+
+  // ── KEYS HANDLER ──────────────────────────────────────────────
 
   const keys = {
     get: async <T extends keyof SignalDataTypeMap>(
@@ -390,11 +418,21 @@ async function useDatabaseAuthState(userId: string) {
       ids: string[]
     ): Promise<{ [id: string]: SignalDataTypeMap[T] }> => {
       const result: { [id: string]: SignalDataTypeMap[T] } = {};
-      for (const id of ids) {
-        const val = keysMap[`${type}/${id}`];
-        if (val !== undefined) result[id] = val;
+
+      try {
+        for (const id of ids) {
+          const key = `${type}/${id}`;
+          const val = keysMap[key];
+
+          if (val !== undefined && val !== null) {
+            result[id] = val;
+          }
+        }
+      } catch (e) {
+        console.error("❌ keys.get error:", e);
       }
-      return result;
+
+      return result; // 🔥 ALWAYS RETURN OBJECT
     },
 
     set: async (data: {
@@ -402,26 +440,31 @@ async function useDatabaseAuthState(userId: string) {
         [id: string]: SignalDataTypeMap[T] | null;
       };
     }) => {
-      // Update in-memory keys
-      for (const type in data) {
-        const entries = (data as any)[type];
-        for (const id in entries) {
-          const val = entries[id];
-          const k = `${type}/${id}`;
-          if (val != null) keysMap[k] = val;
-          else delete keysMap[k];
-        }
-      }
+      try {
+        for (const type in data) {
+          const entries = (data as any)[type];
 
-      // 🔥 Debounced save
-      scheduleSave();
+          for (const id in entries) {
+            const val = entries[id];
+            const k = `${type}/${id}`;
+
+            if (val != null) keysMap[k] = val;
+            else delete keysMap[k];
+          }
+        }
+
+        scheduleSave();
+      } catch (e) {
+        console.error("❌ keys.set error:", e);
+      }
     },
   };
+
+  // ── RETURN STATE ──────────────────────────────────────────────
 
   return {
     state: { creds, keys },
 
-    // 🔥 Debounced creds save
     saveCreds: async () => {
       scheduleSave();
     },
@@ -436,7 +479,7 @@ export async function clearDatabaseAuthState(userId: string) {
       withTimeout(
         db
           .delete(whatsappAuthTable)
-          .where(eq(whatsappAuthTable.userId, userId))
+          .where(eq(whatsappAuthTable.userId, userId)) // ✅ FIXED spacing bug
       )
     );
   } catch (e) {
